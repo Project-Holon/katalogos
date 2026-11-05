@@ -1,0 +1,31 @@
+# Checks every listed mod where the launcher reads it: on a pull request,
+# on main, and once a day (a mod's new release can break after listing).
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tool/target
+          key: tool-${{ hashFiles('tool/Cargo.toml', 'tool/Cargo.lock') }}
+      - name: Test the tool
+        working-directory: tool
+        run: cargo test --quiet
+      - name: Check the index
+        working-directory: tool
+        run: cargo run --quiet --release -- check ../index.json

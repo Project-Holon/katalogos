@@ -1,0 +1,6 @@
+{
+  "format": 1,
+  "mods": [
+    { "repo": "Project-Holon/faint-penalty", "official": true }
+  ]
+}

@@ -1,0 +1,47 @@
+# The workflow a mod repo calls to publish a version (docs/publishing.md).
+#
+# In the mod repo, .github/workflows/release.yml:
+#
+#   on:
+#     push:
+#       tags: ["v*"]
+#   permissions:
+#     contents: write
+#   jobs:
+#     release:
+#       uses: Project-Holon/katalogos/.github/workflows/build-mod.yml@main
+#
+# On a tag v1.2.0 it packs the mod folder into mod.bw, writes mod.json and
+# publishes both as the release v1.2.0.
+name: build mod
+
+on:
+  workflow_call:
+    inputs:
+      mod-dir:
+        description: "The mod folder in the repo (the one holding eidos_mod.txt)"
+        type: string
+        default: mod
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get the katalogos tool
+        run: |
+          curl -fsSL -o katalogos https://github.com/Project-Holon/katalogos/releases/latest/download/katalogos-linux-x86_64
+          chmod +x katalogos
+      - name: Pack mod.bw and write mod.json
+        run: ./katalogos pack "${{ inputs.mod-dir }}" --repo "${GITHUB_REPOSITORY}" --version "${GITHUB_REF_NAME}" --out dist
+      - name: Check them as the index will
+        run: ./katalogos inspect dist/mod.json dist/mod.bw
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name=$(python3 -c "import json; print(json.load(open('dist/mod.json'))['name'])")
+          gh release create "${GITHUB_REF_NAME}" dist/mod.bw dist/mod.json \
+            --repo "${GITHUB_REPOSITORY}" --title "${name} ${GITHUB_REF_NAME}" --generate-notes
