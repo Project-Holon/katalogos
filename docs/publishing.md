@@ -36,6 +36,9 @@ jobs:
     uses: Project-Holon/katalogos/.github/workflows/build-mod.yml@main
     # with:
     #   mod-dir: path/to/the/mod/folder   (default: mod)
+    #   build: sh build.sh                (a step before packing; clang and
+    #                                      lld are installed for it, to build
+    #                                      a wasm module)
 ```
 
 ## 3. A release
@@ -62,9 +65,11 @@ releases need no change in katalogos.
 
 ## Trying it locally
 
-With Rust installed, from katalogos' `tool/` folder:
+With Rust installed, the tool the workflow uses (from
+[morphe](https://github.com/Project-Holon/morphe)):
 
 ```
-cargo run --release -- pack ../../my-mod/mod --repo you/my-mod --version 1.0.0 --out dist
-cargo run --release -- inspect dist/mod.json dist/mod.bw
+cargo install --git https://github.com/Project-Holon/morphe --tag v0.6.1 katalogos --locked
+katalogos pack my-mod/mod --repo you/my-mod --version 1.0.0 --out dist
+katalogos inspect dist/mod.json dist/mod.bw
 ```

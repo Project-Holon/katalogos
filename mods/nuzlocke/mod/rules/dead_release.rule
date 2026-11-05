@@ -1,0 +1,6 @@
+language 1
+# A Pokemon of the player's that faints is released after the battle.
+rule dead_release on battle.faint
+    when event.side == 0
+    when setting.nuzlocke.dead == 0
+    do release event.mon

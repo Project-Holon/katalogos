@@ -1,0 +1,7 @@
+# Soul Link's options.  Every player should choose the same ones.
+# Lost Pokemon: released, or moved to the last box (box 24).
+option soul_link.dead      choice "Lost Pokemon"           release|box
+option soul_link.together  bool   "Keep pairs together"    on
+option soul_link.dupes     bool   "Dupes clause"           on
+option soul_link.shiny     bool   "Shiny clause"           on
+option soul_link.no_revive bool   "No revives"             on

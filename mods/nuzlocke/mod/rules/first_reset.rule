@@ -1,0 +1,4 @@
+language 1
+# Each wild battle starts as "not the area's first encounter".
+rule first_reset on encounter.wild
+    do set state.first 0

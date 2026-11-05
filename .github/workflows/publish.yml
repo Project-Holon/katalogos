@@ -1,0 +1,42 @@
+# Publishes the official mods: on main, every mod of index.json whose
+# listed version has no release yet is built, packed and released as
+# <id>-v<version> (mod.bw and mod.json).  Raising a mod's version in its
+# manifest and in index.json, in the same pull request, is the whole of a
+# release.
+name: publish
+
+on:
+  push:
+    branches: [main]
+    paths: ["index.json", "mods/**"]
+  workflow_dispatch:
+
+concurrency: publish
+
+jobs:
+  official:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Release the new versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          katalogos pending index.json > pending.txt
+          cat pending.txt
+          while read -r id version; do
+            [ -n "$id" ] || continue
+            if [ -e "mods/$id/build.sh" ]; then
+              sh "mods/$id/build.sh"
+            fi
+            out="dist/$id"
+            katalogos pack "mods/$id/mod" --official "$id" --version "$version" --out "$out"
+            katalogos inspect "$out/mod.json" "$out/mod.bw"
+            name=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['name'])" "$out/mod.json")
+            gh release create "$id-v$version" "$out/mod.bw" "$out/mod.json" \
+              --title "$name $version" --latest=false \
+              --notes "The official mod $name, version $version (mods/$id)."
+          done < pending.txt

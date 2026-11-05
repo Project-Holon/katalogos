@@ -1,0 +1,5 @@
+language 1
+# Losing every Pokemon ends the run.
+rule game_over on whiteout
+    when event.in_battle == 1
+    do message "Every Pokemon has fainted. The Nuzlocke is over."

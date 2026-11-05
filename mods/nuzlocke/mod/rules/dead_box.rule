@@ -1,0 +1,6 @@
+language 1
+# Or, with "Fainted Pokemon: box", it goes to the last box (box 24).
+rule dead_box on battle.faint
+    when event.side == 0
+    when setting.nuzlocke.dead == 1
+    do box event.mon 23

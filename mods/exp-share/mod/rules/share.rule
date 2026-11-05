@@ -1,0 +1,6 @@
+language 1
+# Every party member that did not fight, and can battle, gets half of what
+# it would have gained by fighting (eidos interface 5, battle.exp share).
+rule share on battle.exp
+    when setting.exp_share.on == 1
+    do set event.share 50

@@ -1,1 +1,2 @@
-tool/target/
+mods/*/mod/*.wasm
+dist/

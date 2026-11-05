@@ -1,6 +1,8 @@
 {
   "format": 1,
   "mods": [
-    { "repo": "Project-Holon/faint-penalty", "official": true }
+    { "mod": "nuzlocke", "version": "1.0.0" },
+    { "mod": "soul-link", "version": "1.0.0" },
+    { "mod": "exp-share", "version": "1.0.0" }
   ]
 }

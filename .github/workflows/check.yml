@@ -1,5 +1,7 @@
 # Checks every listed mod where the launcher reads it: on a pull request,
 # on main, and once a day (a mod's new release can break after listing).
+# An official mod whose listed version is not released yet is built and
+# packed from its folder and checked the same way.
 name: check
 
 on:
@@ -15,17 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            tool/target
-          key: tool-${{ hashFiles('tool/Cargo.toml', 'tool/Cargo.lock') }}
-      - name: Test the tool
-        working-directory: tool
-        run: cargo test --quiet
+      - uses: ./.github/actions/setup
+      - name: Build the official mods that hold code
+        run: |
+          for b in mods/*/build.sh; do
+            [ -e "$b" ] && sh "$b"
+          done
       - name: Check the index
-        working-directory: tool
-        run: cargo run --quiet --release -- check ../index.json
+        run: katalogos check index.json

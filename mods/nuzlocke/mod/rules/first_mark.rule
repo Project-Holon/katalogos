@@ -1,0 +1,11 @@
+language 1
+# The first wild Pokemon met in an area is the one the player may catch.
+# With the dupes clause, a species already caught does not count, and the
+# next encounter does.  The rule starts once the player has a ball: an
+# encounter met with none in the bag does not use the area.
+rule first_mark on encounter.wild
+    when state.used[area] == 0
+    when item_count[4] + item_count[3] + item_count[2] + item_count[1] > 0
+    when setting.nuzlocke.dupes == 0 || !caught[event.species]
+    do set state.first 1
+    do set state.used[area] 1

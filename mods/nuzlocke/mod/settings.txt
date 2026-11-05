@@ -1,0 +1,8 @@
+# The Nuzlocke's options, on the eidos settings screen under the mod.
+# Fainted Pokemon: released, or moved to the last box (box 24), which then
+# cannot be withdrawn from.
+option nuzlocke.dead       choice "Fainted Pokemon"              release|box
+option nuzlocke.dupes      bool   "Dupes clause"                 on
+option nuzlocke.shiny      bool   "Shiny clause"                 on
+option nuzlocke.static     bool   "Story Pokemon can be caught"  on
+option nuzlocke.no_revive  bool   "No revives"                   on

@@ -1,0 +1,7 @@
+language 1
+# The fallen in the last box stay there.
+rule no_graveyard on box.withdraw
+    when setting.nuzlocke.dead == 1
+    when event.box == 23
+    do refuse
+    do message "This Pokemon fainted: it stays in box 24."

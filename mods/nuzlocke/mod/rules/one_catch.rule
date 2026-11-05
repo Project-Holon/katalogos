@@ -1,0 +1,9 @@
+language 1
+# Only the area's first encounter can be caught.  A shiny (shiny clause)
+# and a story Pokemon (when the option allows it) can always be caught.
+rule one_catch on catch.attempt
+    when state.first == 0
+    when setting.nuzlocke.shiny == 0 || event.shiny == 0
+    when setting.nuzlocke.static == 0 || event.static == 0
+    do refuse
+    do message "Not this area's first encounter: it cannot be caught."

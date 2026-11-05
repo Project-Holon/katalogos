@@ -1,6 +1,7 @@
-# The workflow a mod repo calls to publish a version (docs/publishing.md).
+# The workflow another mod's repository calls to publish a version
+# (docs/publishing.md).
 #
-# In the mod repo, .github/workflows/release.yml:
+# In the mod's repository, .github/workflows/release.yml:
 #
 #   on:
 #     push:
@@ -22,6 +23,10 @@ on:
         description: "The mod folder in the repo (the one holding eidos_mod.txt)"
         type: string
         default: mod
+      build:
+        description: "A command run before packing (to build a wasm module, say); clang and lld are installed for it"
+        type: string
+        default: ""
 
 jobs:
   release:
@@ -30,14 +35,16 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Get the katalogos tool
-        run: |
-          curl -fsSL -o katalogos https://github.com/Project-Holon/katalogos/releases/latest/download/katalogos-linux-x86_64
-          chmod +x katalogos
+      - uses: Project-Holon/katalogos/.github/actions/setup@main
+        with:
+          clang: ${{ inputs.build != '' }}
+      - name: Build
+        if: inputs.build != ''
+        run: ${{ inputs.build }}
       - name: Pack mod.bw and write mod.json
-        run: ./katalogos pack "${{ inputs.mod-dir }}" --repo "${GITHUB_REPOSITORY}" --version "${GITHUB_REF_NAME}" --out dist
+        run: katalogos pack "${{ inputs.mod-dir }}" --repo "${GITHUB_REPOSITORY}" --version "${GITHUB_REF_NAME}" --out dist
       - name: Check them as the index will
-        run: ./katalogos inspect dist/mod.json dist/mod.bw
+        run: katalogos inspect dist/mod.json dist/mod.bw
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}

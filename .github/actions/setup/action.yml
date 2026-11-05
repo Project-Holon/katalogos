@@ -1,0 +1,27 @@
+# The tools every workflow here needs: the katalogos packer and checker
+# (built from morphe at a fixed tag) and clang for the official mods that
+# hold code.
+name: katalogos setup
+description: Install the katalogos tool and a wasm32 clang
+inputs:
+  morphe-tag:
+    description: The morphe tag the katalogos tool is built from
+    default: v0.6.1
+  clang:
+    description: Install clang and lld (for mods with a build.sh)
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: ~/.cargo/bin/katalogos
+        key: katalogos-${{ runner.os }}-${{ inputs.morphe-tag }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: cargo install --git https://github.com/Project-Holon/morphe --tag "${{ inputs.morphe-tag }}" katalogos --locked
+    - if: inputs.clang == 'true'
+      shell: bash
+      run: sudo apt-get install -y --no-install-recommends clang lld
