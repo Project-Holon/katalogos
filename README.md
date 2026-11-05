@@ -82,7 +82,7 @@ The workflows use the `katalogos` packer and checker from
 built from a fixed tag. To try a mod locally:
 
 ```
-cargo install --git https://github.com/Project-Holon/morphe --tag v0.6.1 katalogos --locked
+cargo install --git https://github.com/Project-Holon/morphe --tag v0.7.0 katalogos --locked
 katalogos pack path/to/mod --repo you/your-mod --version 1.0.0 --out dist
 katalogos inspect dist/mod.json dist/mod.bw
 ```

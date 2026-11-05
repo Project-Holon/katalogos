@@ -43,6 +43,7 @@ writes it by hand.
 | `games` | manifest `game` | `black`, `white` or both; both when the manifest names no cartridge |
 | `game_code` | manifest `game` | the cartridge code (`IRBO`: Black, English), when there is one |
 | `tags` | manifest `tags` | lower case, from `tags = challenge, rules` |
+| `icon` | manifest `icon` | `{"item": 4}` (an item's bag icon), `{"species": 25}` (a Pokemon's sprite), both drawn from the player's own ROM, or `{"file": "icon.png"}`: the mod's own picture, published beside `mod.json` |
 | `api` | manifest `api` | the mod interface version the mod needs |
 | `has_code` | manifest `code` | the mod runs its own code in the game |
 | `rules` | manifest `rule` lines | how many rules the mod adds |
@@ -66,9 +67,15 @@ author      = someone
 version     = 1.0.0
 game        = IRBO
 tags        = challenge, money
+icon        = item 4
 ```
 
 `description` is the only one the packer requires.
+
+`icon` is one of `item <n>` (1 to 626), `species <n>` (1 to 649) or the
+name of a PNG in the mod folder (square, at most 256 by 256 pixels and
+64 KB). Game pictures are drawn from the player's own ROM, so no game art is
+ever published.
 
 ## What the launcher checks
 

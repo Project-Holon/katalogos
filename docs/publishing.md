@@ -69,7 +69,7 @@ With Rust installed, the tool the workflow uses (from
 [morphe](https://github.com/Project-Holon/morphe)):
 
 ```
-cargo install --git https://github.com/Project-Holon/morphe --tag v0.6.1 katalogos --locked
+cargo install --git https://github.com/Project-Holon/morphe --tag v0.7.0 katalogos --locked
 katalogos pack my-mod/mod --repo you/my-mod --version 1.0.0 --out dist
 katalogos inspect dist/mod.json dist/mod.bw
 ```

@@ -6,7 +6,7 @@ description: Install the katalogos tool and a wasm32 clang
 inputs:
   morphe-tag:
     description: The morphe tag the katalogos tool is built from
-    default: v0.6.1
+    default: v0.7.0
   clang:
     description: Install clang and lld (for mods with a build.sh)
     default: "true"

@@ -6,5 +6,6 @@ tags        = quality of life, experience
 state       = exp_share
 api         = 5
 settings    = settings.txt
+icon        = item 216
 
 rule = battle.exp rules/share.rule

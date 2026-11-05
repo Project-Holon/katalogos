@@ -7,4 +7,5 @@ state       = soul_link
 api         = 5
 code        = soul_link.wasm
 settings    = settings.txt
+icon        = item 280
 multiplayer = 1

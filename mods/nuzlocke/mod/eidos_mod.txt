@@ -5,6 +5,7 @@ version     = 1.0.0
 tags        = challenge, nuzlocke
 state       = nuzlocke
 settings    = settings.txt
+icon        = item 4
 
 rule = encounter.wild  rules/first_reset.rule
 rule = encounter.wild  rules/first_mark.rule

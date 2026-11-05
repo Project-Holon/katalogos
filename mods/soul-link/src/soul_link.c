@@ -242,6 +242,7 @@ static void mark_lost(uint32_t area)
 static int32_t g_area = -1;   /* the area of the wild battle, or -1 */
 static int g_first;           /* it is this player's first encounter there */
 static int g_caught;          /* the battle ended in a catch */
+static int g_link_next;       /* the next caught Pokemon stored is a pair's */
 static int g_told_no_session;
 
 static int own_event(void)
@@ -325,6 +326,21 @@ static int32_t on_catch_result(void *p)
 
     if (own_event() && e->caught != 0u) {
         g_caught = 1;
+        g_link_next = g_first;   /* stored a moment later (mon.receive) */
+    }
+    return EIDOS_EVENT_CONTINUE;
+}
+
+/* No healing a Pokemon whose pair is gone, in battle. */
+static int doomed_battle(const EidosMonRef *m);
+
+static int32_t on_heal_hp(void *p)
+{
+    EidosHealHp *e = (EidosHealHp *)p;
+
+    if (own_event() && in_session() && e->mon.place == EIDOS_MON_BATTLE && doomed_battle(&e->mon)) {
+        eidos_message("Its pair is gone: it cannot be healed.");
+        return EIDOS_EVENT_REFUSE;
     }
     return EIDOS_EVENT_CONTINUE;
 }
@@ -356,7 +372,21 @@ static int32_t on_mon_receive(void *p)
     uint32_t pers;
     int32_t area;
 
-    if (!own_event() || !in_session() || e->source == EIDOS_RECEIVE_TRADE) {
+    if (!own_event() || !in_session()) {
+        return EIDOS_EVENT_CONTINUE;
+    }
+    /* What is linked: the area's first encounter, caught, and the gifts
+     * (the starter is one: every player gets theirs in the same town).  A
+     * shiny or a story Pokemon caught outside the rule, an egg and a trade
+     * are not part of a pair. */
+    if (e->source == EIDOS_RECEIVE_CATCH) {
+        int link = g_link_next;
+
+        g_link_next = 0;
+        if (!link) {
+            return EIDOS_EVENT_CONTINUE;
+        }
+    } else if (e->source != EIDOS_RECEIVE_GIFT) {
         return EIDOS_EVENT_CONTINUE;
     }
     pers = e->mon.place == EIDOS_MON_BOX ? box_field(&e->mon, EIDOS_MON_FIELD_PERSONALITY)
@@ -704,6 +734,7 @@ int32_t eidos_mod_start(void)
     BIND(EIDOS_EVENT_BATTLE_MOVE, on_battle_move);
     BIND(EIDOS_EVENT_MON_REVIVE, on_mon_revive);
     BIND(EIDOS_EVENT_WHITEOUT, on_whiteout);
+    BIND(EIDOS_EVENT_HEAL_HP, on_heal_hp);
     line_start("Soul Link started");
     log_line();
     return 0;

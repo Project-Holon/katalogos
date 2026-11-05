@@ -50,5 +50,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           name=$(python3 -c "import json; print(json.load(open('dist/mod.json'))['name'])")
-          gh release create "${GITHUB_REF_NAME}" dist/mod.bw dist/mod.json \
+          set -- dist/mod.bw dist/mod.json
+          [ -f dist/icon.png ] && set -- "$@" dist/icon.png
+          gh release create "${GITHUB_REF_NAME}" "$@" \
             --repo "${GITHUB_REPOSITORY}" --title "${name} ${GITHUB_REF_NAME}" --generate-notes
