@@ -53,6 +53,21 @@ row, and picks the next Pokemon after a faint the same way.
 
 ## Status
 
-See the benchmark notes in the pull request. Open items: doubles (only the
+Benchmarks (2026-11-06), the share of battles the trainer side wins:
+
+| Test | Opponent | Smart Trainers |
+|---|---|---|
+| Showdown sim, 1000 battles | random moves | 92.1% |
+| Showdown sim, 1000 battles | strongest hit | 70.6% |
+| Showdown sim, 1000 battles | copy of the game's regular AI | 91.7% |
+| Showdown sim, 1000 battles | copy of the game's gym AI | 69.4% |
+| poke-env bots, 150 battles | SimpleHeuristicsPlayer | 68.7% |
+
+In game (eidos, fixed player that always uses its first move, 54 battles per
+group per AI): regular and ranger trainers 50/54 against 45/54 for the game's
+own AI; gym trio 11/27 against 13/27, where the type match decides nearly every
+battle and both AIs mostly pick the same move.
+
+Open items: doubles (only the
 front Pokemon is used), PP of the trainer's moves, hazards and weather
 moves, the trainer's items (the game still picks them).
