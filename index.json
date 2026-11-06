@@ -1,8 +1,8 @@
 {
   "format": 1,
   "mods": [
-    { "mod": "nuzlocke", "version": "1.0.0" },
-    { "mod": "soul-link", "version": "1.0.0" },
+    { "mod": "nuzlocke", "version": "1.1.0" },
+    { "mod": "soul-link", "version": "1.1.0" },
     { "mod": "exp-share", "version": "1.0.0" }
   ]
 }
