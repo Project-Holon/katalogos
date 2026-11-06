@@ -1,0 +1,2 @@
+# Smart Trainers' options.
+option smarttrainers.debug bool "Log each choice in the mod log" off
