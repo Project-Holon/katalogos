@@ -24,6 +24,7 @@
 
 #define GRAVE_BOX   23u     /* box 24: where the fallen go with "box" */
 #define PARTY_MAX   6u
+#define PARTY_FIELD_CONDITION 0x9Du   /* the party record's major status (0 none) */
 #define BOX_SLOTS   30u
 #define SWEEP_EVERY 30u     /* frames between two looks at the shared table */
 #define HANDLED_MAX 64u
@@ -394,6 +395,10 @@ static int32_t on_mon_receive(void *p)
     area = eidos_area_of(e->zone);
     if (area > 0) {
         remember(pers, (uint32_t)area);
+        /* the first gift is the starter: its area is the starter pair's */
+        if (e->source == EIDOS_RECEIVE_GIFT) {
+            (void)eidos_shared_cas("starter", 0, area);
+        }
     }
     return EIDOS_EVENT_CONTINUE;
 }
@@ -409,15 +414,101 @@ static uint32_t battle_area(const EidosMonRef *m)
     return linked_area(pers);
 }
 
+/*
+ * The starter pair is never lost when it is all a player has left: a
+ * fainted starter that leaves no Pokemon able to fight would end the run,
+ * so both starters go back to level 1 instead (`starter_reset` counts
+ * these; each game resets its own starter once per count).
+ */
+static uint32_t starter_area(void)
+{
+    int32_t v = 0;
+
+    if (eidos_shared_get("starter", &v) == 0 && v > 0) {
+        return (uint32_t)v;
+    }
+    return 0;
+}
+
+static int g_reset_this_battle;   /* the whiteout that follows is a reset's */
+
+/* Whether the player has a Pokemon able to fight other than `skip`. */
+static int others_can_fight(uint32_t skip_pers)
+{
+    uint32_t slot, pers, hp, egg;
+    EidosMonRef r;
+
+    for (slot = 0; slot < PARTY_MAX; slot++) {
+        if (eidos_battle_ref(0, slot, &r) != 0 ||
+            eidos_battle_get(REF_ARGS(r), EIDOS_MON_FIELD_PERSONALITY, &pers) != 0 ||
+            pers == skip_pers) {
+            continue;
+        }
+        hp = 0;
+        egg = 0;
+        (void)eidos_battle_get(REF_ARGS(r), EIDOS_MON_FIELD_HP, &hp);
+        (void)eidos_battle_get(REF_ARGS(r), EIDOS_MON_FIELD_IS_EGG, &egg);
+        if (hp > 0u && !egg) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int32_t on_battle_faint(void *p)
 {
     EidosBattleFaint *e = (EidosBattleFaint *)p;
+    uint32_t area, pers = 0;
 
     if (!own_event() || e->side != 0u || !in_session()) {
         return EIDOS_EVENT_CONTINUE;
     }
-    mark_lost(battle_area(&e->mon));
+    area = battle_area(&e->mon);
+    (void)eidos_battle_get(REF_ARGS(e->mon), EIDOS_MON_FIELD_PERSONALITY, &pers);
+    if (area != 0u && area == starter_area() && setting("soul_link.starter_reset") == 1 &&
+        shared_is(key("lost", area), 1) != 1 && !others_can_fight(pers)) {
+        (void)eidos_shared_add("starter_reset", 1);
+        g_reset_this_battle = 1;
+        eidos_message("The starters are spared: both go back to level 1.");
+        return EIDOS_EVENT_CONTINUE;
+    }
+    mark_lost(area);
     return EIDOS_EVENT_CONTINUE;
+}
+
+/* Out of battle: this game's starter, once per reset the session counted.
+ * Level 1 is 0 experience in every growth rate; the game's own recalc sets
+ * the level and the stats, and the starter comes back at full HP. */
+static void starter_reset_sweep(void)
+{
+    int32_t want = 0, done = 0;
+    uint32_t area = starter_area(), n = eidos_party_count(), i, pers, max = 0;
+    EidosMonRef r;
+
+    if (area == 0u || eidos_shared_get("starter_reset", &want) != 0 || want <= 0) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        if (eidos_party_ref(i, &r) != 0 || party_field(&r, EIDOS_MON_FIELD_IS_EGG) ||
+            party_area(&r) != area) {
+            continue;
+        }
+        pers = party_field(&r, EIDOS_MON_FIELD_PERSONALITY);
+        done = 0;
+        (void)eidos_shared_get(key("reset", pers), &done);
+        if (done >= want) {
+            continue;
+        }
+        (void)eidos_party_set(REF_ARGS(r), EIDOS_MON_FIELD_EXP, 0);
+        if (eidos_mon_recalc(REF_ARGS(r)) != 0) {
+            continue;
+        }
+        (void)eidos_party_get(REF_ARGS(r), EIDOS_MON_FIELD_MAX_HP, &max);
+        (void)eidos_party_set(REF_ARGS(r), EIDOS_MON_FIELD_HP, max);
+        (void)eidos_party_set(REF_ARGS(r), PARTY_FIELD_CONDITION, 0);
+        (void)eidos_shared_set(key("reset", pers), want);
+        eidos_message("Your starter went back to level 1.");
+    }
 }
 
 static int32_t on_mon_release(void *p)
@@ -586,17 +677,148 @@ static int32_t on_mon_revive(void *p)
     return EIDOS_EVENT_CONTINUE;
 }
 
-/* Losing every Pokemon ends the run for every player. */
+/* ------------------------------------------------------------------ */
+/* The end of the run                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Losing every Pokemon ends the run for every player.  The player who lost
+ * whites out as the game does; every other player's team faints with it
+ * and that player whites out too.  Then each player stays in the Pokemon
+ * Centre the whiteout took them to (or the home, before the first Centre):
+ * a door out leads back to where the whiteout left them.
+ *
+ * The lock is this game's own, kept in the mod's saved data, so it holds
+ * after the game is saved and loaded again.
+ */
+typedef struct Lock {
+    uint32_t magic;      /* LOCK_MAGIC once written */
+    uint32_t state;      /* 0 none, 1 waiting for the Centre, 2 locked */
+    uint32_t zone;       /* the Centre (or the home, before the first one) */
+    int32_t x, z;        /* the cell in front of the counter */
+} Lock;
+
+#define LOCK_MAGIC 0x534C4B32u   /* "SLK2" */
+
+/* The field takes no steps while the whiteout runs (the blackout screen,
+ * the warp, the nurse's script): the first step after a pause this long is
+ * the one in the Centre. */
+#define LOCK_PAUSE 60u
+
+static uint32_t g_frame, g_last_step;
+
+static void on_frame(void)
+{
+    g_frame++;
+}
+
+static Lock g_lock;
+static int g_lock_loaded;
 static int g_told_over;
+
+static void lock_load(void)
+{
+    if (g_lock_loaded) {
+        return;
+    }
+    g_lock_loaded = 1;
+    if (eidos_state_load(&g_lock, sizeof g_lock) != (int32_t)sizeof g_lock ||
+        g_lock.magic != LOCK_MAGIC) {
+        g_lock.magic = LOCK_MAGIC;
+        g_lock.state = 0;
+    }
+}
+
+static void lock_store(void)
+{
+    g_lock.magic = LOCK_MAGIC;
+    (void)eidos_state_store(&g_lock, sizeof g_lock);
+}
+
+/* The whiteout has started: the Centre is where the player stands at the
+ * first step after it (lock_step).  It is the home when the player has not
+ * healed at a Centre yet, as the game's own respawn point. */
+static void lock_wait(void)
+{
+    lock_load();
+    if (g_lock.state == 0u) {
+        g_lock.state = 1u;
+        lock_store();
+    }
+}
 
 static int32_t on_whiteout(void *p)
 {
     EidosWhiteout *e = (EidosWhiteout *)p;
 
-    if (own_event() && e->in_battle != 0u && in_session()) {
-        (void)eidos_shared_set("over", 1);
-        g_told_over = 1;
-        eidos_message("Every Pokemon has fainted. The Soul Link is over for every player.");
+    if (!own_event() || e->in_battle == 0u || !in_session()) {
+        return EIDOS_EVENT_CONTINUE;
+    }
+    if (g_reset_this_battle) {
+        /* the starters were spared: not the end */
+        g_reset_this_battle = 0;
+        return EIDOS_EVENT_CONTINUE;
+    }
+    (void)eidos_shared_set("over", 1);
+    g_told_over = 1;
+    eidos_message("Every Pokemon has fainted. The Soul Link is over for every player.");
+    lock_wait();
+    return EIDOS_EVENT_CONTINUE;
+}
+
+/* Another player lost everything: this game's team faints and the player
+ * whites out too. */
+static void wipe_with_partner(void)
+{
+    uint32_t n = eidos_party_count(), i;
+    EidosMonRef r;
+
+    lock_load();
+    if (g_lock.state != 0u) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        if (eidos_party_ref(i, &r) == 0 && !party_field(&r, EIDOS_MON_FIELD_IS_EGG)) {
+            (void)eidos_party_set(REF_ARGS(r), EIDOS_MON_FIELD_HP, 0);
+        }
+    }
+    if (eidos_whiteout() == 0) {
+        lock_wait();
+    }
+}
+
+/* Once a frame on the field: the Centre is found after the whiteout. */
+static void lock_step(void)
+{
+    int16_t x, y, z;
+    uint32_t pause = g_frame - g_last_step;
+
+    g_last_step = g_frame;
+    lock_load();
+    if (g_lock.state == 1u && pause > LOCK_PAUSE &&
+        eidos_player_pos(&x, &y, &z) == 0) {
+        g_lock.state = 2u;
+        g_lock.zone = eidos_zone();
+        g_lock.x = x;
+        g_lock.z = z;
+        lock_store();
+    }
+}
+
+/* A door out of the Centre leads back to the counter. */
+static int32_t on_map_warp(void *p)
+{
+    EidosMapWarp *e = (EidosMapWarp *)p;
+
+    if (!own_event()) {
+        return EIDOS_EVENT_CONTINUE;
+    }
+    lock_load();
+    if (g_lock.state == 2u && e->zone == g_lock.zone && e->dest_zone != g_lock.zone) {
+        e->dest_zone = (uint16_t)g_lock.zone;
+        e->dest_x = (int16_t)g_lock.x;
+        e->dest_z = (int16_t)g_lock.z;
+        eidos_message("Your journey has ended. Please stay and rest here.");
     }
     return EIDOS_EVENT_CONTINUE;
 }
@@ -604,6 +826,19 @@ static int32_t on_whiteout(void *p)
 /* ------------------------------------------------------------------ */
 /* The sweep: this game's Pokemon follow the shared table              */
 /* ------------------------------------------------------------------ */
+
+static uint32_t party_non_eggs(void)
+{
+    uint32_t n = eidos_party_count(), i, c = 0;
+    EidosMonRef r;
+
+    for (i = 0; i < n; i++) {
+        if (eidos_party_ref(i, &r) == 0 && !party_field(&r, EIDOS_MON_FIELD_IS_EGG)) {
+            c++;
+        }
+    }
+    return c;
+}
 
 static void tell(const char *what, uint32_t species_unused)
 {
@@ -618,10 +853,15 @@ static void sweep(void)
     int to_box = setting("soul_link.dead") == 1;
     EidosMonRef r;
 
-    if (!g_told_over && shared_is("over", 1) == 1) {
-        g_told_over = 1;
-        eidos_message("A player lost every Pokemon. The Soul Link is over for every player.");
+    if (shared_is("over", 1) == 1) {
+        if (!g_told_over) {
+            g_told_over = 1;
+            eidos_message("A player lost every Pokemon. The Soul Link is over for every player.");
+        }
+        wipe_with_partner();
+        return;
     }
+    starter_reset_sweep();
 
     /* The party: lost pairs go, boxed pairs go to the boxes. */
     for (i = 0; i < n; i++) {
@@ -636,7 +876,14 @@ static void sweep(void)
             continue;
         }
         if (shared_is(key("lost", area), 1) == 1) {
-            int rc = to_box ? eidos_mon_to_box_n(REF_ARGS(r), GRAVE_BOX)
+            int rc;
+
+            /* eidos keeps the last Pokemon that is not an egg: wait until
+             * the party has another, or this one is never tried again */
+            if (party_non_eggs() <= 1u) {
+                continue;
+            }
+            rc = to_box ? eidos_mon_to_box_n(REF_ARGS(r), GRAVE_BOX)
                             : eidos_mon_release(REF_ARGS(r));
             if (rc == 0) {
                 mark_handled(pers);
@@ -688,6 +935,7 @@ static int32_t on_player_step(void *p)
     if (!own_event()) {
         return EIDOS_EVENT_CONTINUE;
     }
+    lock_step();
     if (++g_frames < SWEEP_EVERY) {
         return EIDOS_EVENT_CONTINUE;
     }
@@ -735,6 +983,8 @@ int32_t eidos_mod_start(void)
     BIND(EIDOS_EVENT_MON_REVIVE, on_mon_revive);
     BIND(EIDOS_EVENT_WHITEOUT, on_whiteout);
     BIND(EIDOS_EVENT_HEAL_HP, on_heal_hp);
+    BIND(EIDOS_EVENT_MAP_WARP, on_map_warp);
+    eidos_on_frame((uint32_t)(uintptr_t)on_frame);
     line_start("Soul Link started");
     log_line();
     return 0;

@@ -1,0 +1,10 @@
+language 1
+# After the whiteout: the game warps the player to the last Pokemon Centre
+# (or home) and the nurse's script runs before the field takes steps
+# again, so the first step is in the Centre, in front of the counter.
+rule lock_find on player.step
+    when state.lock == 1
+    do set state.lock 2
+    do set state.lock_zone zone
+    do set state.lock_x player_x
+    do set state.lock_z player_z
