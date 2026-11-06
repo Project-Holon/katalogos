@@ -818,7 +818,7 @@ static int32_t on_map_warp(void *p)
         e->dest_zone = (uint16_t)g_lock.zone;
         e->dest_x = (int16_t)g_lock.x;
         e->dest_z = (int16_t)g_lock.z;
-        eidos_message("Nurse: Your journey has ended. Please stay and rest here.");
+        eidos_message("Your journey has ended. Please stay and rest here.");
     }
     return EIDOS_EVENT_CONTINUE;
 }
