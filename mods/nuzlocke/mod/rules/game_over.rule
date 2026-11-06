@@ -1,5 +1,8 @@
 language 1
-# Losing every Pokemon ends the run.
+# Losing every Pokemon ends the run.  The whiteout takes the player to a
+# Pokemon Centre, and the run stays there (lock_find, lock_door).
 rule game_over on whiteout
     when event.in_battle == 1
+    when state.lock == 0
     do message "Every Pokemon has fainted. The Nuzlocke is over."
+    do set state.lock 1

@@ -1,7 +1,7 @@
 name        = Nuzlocke
 description = The Nuzlocke challenge: catch only the first wild Pokemon of each area, and a Pokemon that faints is gone for good.
 author      = Project Holon
-version     = 1.0.0
+version     = 1.1.0
 tags        = challenge, nuzlocke
 state       = nuzlocke
 settings    = settings.txt
@@ -15,3 +15,5 @@ rule = battle.faint    rules/dead_box.rule
 rule = box.withdraw    rules/no_graveyard.rule
 rule = mon.revive      rules/no_revive.rule
 rule = whiteout        rules/game_over.rule
+rule = player.step     rules/lock_find.rule
+rule = map.warp        rules/lock_door.rule

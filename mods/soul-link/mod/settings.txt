@@ -5,3 +5,4 @@ option soul_link.together  bool   "Keep pairs together"    on
 option soul_link.dupes     bool   "Dupes clause"           on
 option soul_link.shiny     bool   "Shiny clause"           on
 option soul_link.no_revive bool   "No revives"             on
+option soul_link.starter_reset bool "Starters back to level 1" on

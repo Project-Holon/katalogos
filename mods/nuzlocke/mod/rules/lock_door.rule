@@ -1,0 +1,11 @@
+language 1
+# Once the run is over, a door out of the Pokemon Centre leads back to the
+# counter.
+rule lock_door on map.warp
+    when state.lock == 2
+    when event.zone == state.lock_zone
+    when event.dest_zone != state.lock_zone
+    do set event.dest_zone state.lock_zone
+    do set event.dest_x state.lock_x
+    do set event.dest_z state.lock_z
+    do message "Nurse: Your journey has ended. Please stay and rest here."
