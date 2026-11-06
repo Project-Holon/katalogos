@@ -1,7 +1,6 @@
-# Smart Trainers (work in progress)
+# Smart Trainers
 
 Trainers battle like a thinking player instead of the game's point scripts.
-Not in the index yet.
 
 ## What the trainer knows
 

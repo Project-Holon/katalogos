@@ -49,6 +49,7 @@ Where the launcher reads the files:
 | [Nuzlocke](mods/nuzlocke) | catch only the first wild Pokemon of each area; a Pokemon that faints is gone |
 | [Soul Link](mods/soul-link) | a Nuzlocke for two or more players in one multiplayer game, with linked pairs |
 | [Exp. Share](mods/exp-share) | the whole party gains experience in every battle; an option switches it off |
+| [Smart Trainers](mods/smart-trainers) | trainers battle like a thinking player: they learn your Pokemon in battle, switch and set up; needs eidos 0.2.3 |
 
 A new version of an official mod: raise `version` in its `mod/eidos_mod.txt`
 and in `index.json`, in the same pull request. Once it is on `main`, the
