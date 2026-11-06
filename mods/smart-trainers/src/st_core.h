@@ -82,6 +82,13 @@ enum { ST_W_NONE, ST_W_SUN, ST_W_RAIN, ST_W_SAND, ST_W_HAIL };
 #define ST_IT_FOCUS_SASH 275
 #define ST_IT_CHOICE_SCARF 287
 #define ST_IT_CHOICE_SPECS 297
+#define ST_IT_BLACK_SLUDGE 281
+#define ST_IT_EVIOLITE 538
+#define ST_IT_EXPERT_BELT 268
+#define ST_IT_MUSCLE_BAND 266
+#define ST_IT_WISE_GLASSES 267
+#define ST_IT_SITRUS_BERRY 158
+#define ST_IT_AIR_BALLOON 541
 
 typedef struct StMove {
     int32_t id;          /* the game's move id, 0 for none */
@@ -143,6 +150,9 @@ typedef struct StConfig {
 
 void st_reset(void);                 /* forget everything (a new battle) */
 void st_config(const StConfig *c);
+/* Turns the choice looks ahead (2 by default; 0 the one-turn scores). */
+void st_set_search(int32_t depth);
+void st_set_search_param(int32_t i, int32_t v);
 
 /* Observations. The foe is named by its key; own Pokemon by own index. */
 void st_observe_foe_move(int32_t foe_key, const StMove *m);

@@ -68,6 +68,25 @@ group per AI): regular and ranger trainers 50/54 against 45/54 for the game's
 own AI; gym trio 11/27 against 13/27, where the type match decides nearly every
 battle and both AIs mostly pick the same move.
 
-Open items: doubles (only the
-front Pokemon is used), PP of the trainer's moves, hazards and weather
-moves, the trainer's items (the game still picks them).
+Later runs (2026-11-06), share of battles won, in-game trainer teams:
+
+| Opponent | Smart Trainers | game's gym AI | game's regular AI |
+|---|---|---|---|
+| strongest hit | 53.3% | 43.5% | 29.2% |
+| human-like player | 51.9% | | |
+
+With competitive teams, Smart Trainers wins 63.8% against the game's gym AI.
+Against the human-like player in Gen 4 OU it wins 72.5%, where Metamon (a
+neural network trained on Showdown replays) wins 71.1%.
+
+Since version 0.2.0 the trainer also knows its own PP, the stat changes of
+every move (from the game's move data), Choice items and the locks they
+cause (its own and the player's), the common held items on both sides (the
+player's once revealed), screens, hazards, Substitute, Leech Seed, Yawn,
+Taunt and Tailwind, and it predicts the player's switches.
+
+Needs eidos 0.2.3 or later (the move stat-change data). On an older eidos it
+logs that and leaves every battle to the game's own AI.
+
+Open items: doubles (only the front Pokemon is used), the trainer's items
+(the game still picks them).

@@ -1,7 +1,7 @@
 name        = Smart Trainers
 description = Trainers battle like a thinking player: they remember what your Pokemon did to them, guess what they can do from what they have shown, switch to a counter and set up when it is safe. They never see what a player could not.
 author      = Project Holon
-version     = 0.1.0
+version     = 0.2.0
 tags        = difficulty, battle, ai
 state       = smart_trainers
 api         = 5

@@ -19,6 +19,8 @@ static uint16_t g_turn_move[2];   /* the move each side used first this turn */
 static uint32_t g_seen_keys[12];
 static int g_nseen;
 static int g_choice_turn = -1;
+static int32_t g_lock_key = -1;   /* the trainer's Pokemon that used g_lock_move since it came in */
+static uint32_t g_lock_move;
 static StChoice g_choice;
 
 /* ------------------------------------------------------------ logging */
@@ -135,33 +137,22 @@ static void fill_move(StMove *m, uint32_t id)
             m->eff = ST_EFF_STATUS;
             m->eff_status = id == 92 ? ST_ST_TOXIC : status_of(sick);
         } else if (r0 != 0) {
-            /* move_value reaches only the first stat change (the game's
-             * getter, WAZA_TOOL_GetDataParam, reads the second and third
-             * from the wrong bytes; the game itself uses
-             * WAZA_TOOL_GetRankEffect, which mods cannot call yet): the
-             * moves that change more than one stat come from a table */
-            int32_t t = (int32_t)mv(id, 16), v = r0;
-            int mask = (t >= 1 && t <= 7) ? 1 << (t - 1) : 0, st = v < 0 ? -v : v;
-            switch (id) {
-            case 526: mask = (1 << ST_S_ATK) | (1 << ST_S_SPA); break;            /* Work Up */
-            case 74:  mask = (1 << ST_S_ATK) | (1 << ST_S_SPA); break;            /* Growth */
-            case 339: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF); break;            /* Bulk Up */
-            case 347: mask = (1 << ST_S_SPA) | (1 << ST_S_SPD); break;            /* Calm Mind */
-            case 349: mask = (1 << ST_S_ATK) | (1 << ST_S_SPE); break;            /* Dragon Dance */
-            case 483: mask = (1 << ST_S_SPA) | (1 << ST_S_SPD) | (1 << ST_S_SPE); break;   /* Quiver Dance */
-            case 489: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF) | (1 << ST_S_ACC); break;   /* Coil */
-            case 322: mask = (1 << ST_S_DEF) | (1 << ST_S_SPD); break;            /* Cosmic Power */
-            case 455: mask = (1 << ST_S_DEF) | (1 << ST_S_SPD); break;            /* Defend Order */
-            case 468: mask = (1 << ST_S_ATK) | (1 << ST_S_ACC); break;            /* Hone Claws */
-            case 508: mask = (1 << ST_S_ATK) | (1 << ST_S_SPE); break;            /* Shift Gear */
-            case 504: mask = (1 << ST_S_ATK) | (1 << ST_S_SPA) | (1 << ST_S_SPE); st = 2; v = 2; break;   /* Shell Smash */
-            case 174: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF); v = 1; break;     /* Curse (not a ghost) */
-            case 321: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF); break;            /* Tickle */
-            default: break;
+            /* every stat change of the move, from the game's own record
+             * (move_value's rank fields, eidos 0.2.3): the raises and the
+             * drops apart, so Curse or Shell Smash count as the raise they
+             * are for */
+            int up = 0, down = 0, st_up = 0, st_down = 0, k;
+            for (k = 0; k < 3; k++) {
+                uint32_t t = mv(id, EIDOS_MOVE_FIELD_RANK_TYPE1 + (uint32_t)k);
+                int32_t val = (int32_t)mv(id, EIDOS_MOVE_FIELD_RANK_VALUE1 + (uint32_t)k);
+                int bits = t == 8 ? 0x1F : (t >= 1 && t <= 7) ? 1 << (t - 1) : 0;   /* 8: all five stats */
+                if (!bits || !val) continue;
+                if (val > 0) { up |= bits; if (val > st_up) st_up = val; }
+                else { down |= bits; if (-val > st_down) st_down = -val; }
             }
-            m->eff = v > 0 ? ST_EFF_BOOST : ST_EFF_DROP;
-            m->eff_stat = mask;
-            m->eff_stages = st;
+            if (up) { m->eff = ST_EFF_BOOST; m->eff_stat = up; m->eff_stages = st_up; }
+            else if (down) { m->eff = ST_EFF_DROP; m->eff_stat = down; m->eff_stages = st_down; }
+            else m->eff = ST_EFF_OTHER;
         } else m->eff = ST_EFF_OTHER;
     } else {
         int32_t t = (int32_t)mv(id, 16), v = (int32_t)(int8_t)mv(id, 17);
@@ -250,11 +241,21 @@ static void fill_mon(StMon *s, int side, int slot)
         s->stat[ST_SPD] = (int32_t)bget(&r, EIDOS_MON_FIELD_SPDEF);
         s->stat[ST_SPE] = (int32_t)bget(&r, EIDOS_MON_FIELD_SPEED);
         for (i = 0; i < 4; i++) {
-            uint32_t m = bget(&r, EIDOS_MON_FIELD_MOVE1 + (uint32_t)i);
+            uint32_t m = bget(&r, EIDOS_MON_FIELD_MOVE1 + (uint32_t)i), pp = 0;
             if (!m) break;
             fill_move(&s->moves[i], m);
+            /* the PP the battle has left (eidos 0.2.3); a move out of PP
+             * cannot be chosen */
+            if (eidos_battle_get(r.handle, r.place, r.side, r.box, r.slot, EIDOS_MON_FIELD_PP1 + (uint32_t)i, &pp) == 0)
+                s->moves[i].pp = (int32_t)pp;
             s->nmoves = i + 1;
         }
+        /* a Choice item holds the active one to the move it used since it
+         * came in */
+        if (s->active && g_lock_key == s->key && g_lock_move &&
+            (s->item == ST_IT_CHOICE_BAND || s->item == ST_IT_CHOICE_SPECS || s->item == ST_IT_CHOICE_SCARF))
+            for (i = 0; i < s->nmoves; i++)
+                if (s->moves[i].id == (int32_t)g_lock_move) s->choice_lock = i;
     } else {
         /* the player's: public knowledge only */
         uint32_t spc = (uint32_t)s->species;
@@ -293,15 +294,36 @@ static int own_index_of(const EidosMonRef *r)
 
 /* ------------------------------------------------------------ events */
 
+/* The move stat-change fields came with eidos 0.2.3, appended to api 5: an
+ * older port loads the mod but answers them with whatever the game's own
+ * lookup gives.  The moves are readable only once a game runs (never from
+ * the mod's start), so the first battle checks that Swords Dance reads as
+ * one change, Attack +2; on an older port every battle is left to the
+ * game's own AI. */
+static int g_port_ok = -1;
+static int port_ok(void)
+{
+    static const char old[] = "Smart Trainers needs eidos 0.2.3 or later: the game's own AI plays";
+    if (g_port_ok < 0) {
+        g_port_ok = mv(14, EIDOS_MOVE_FIELD_RANK_COUNT) == 1 && mv(14, EIDOS_MOVE_FIELD_RANK_TYPE1) == 1 &&
+                    (int32_t)mv(14, EIDOS_MOVE_FIELD_RANK_VALUE1) == 2;
+        if (!g_port_ok) eidos_log(old, sizeof old - 1);
+    }
+    return g_port_ok;
+}
+
 static int32_t on_start(void *p)
 {
     (void)p;
+    port_ok();
     st_reset();
     g_in_battle = 1;
     g_nseen = 0;
     g_choice_turn = -1;
     g_turn_first = -1;
     g_v.turn = 0;
+    g_lock_key = -1;
+    g_lock_move = 0;
     return EIDOS_EVENT_CONTINUE;
 }
 
@@ -322,6 +344,14 @@ static int32_t on_turn(void *p)
     return EIDOS_EVENT_CONTINUE;
 }
 
+/* a Pokemon of the trainer's left the field: its Choice lock ends */
+static int32_t on_switch(void *p)
+{
+    EidosBattleSwitch *e = (EidosBattleSwitch *)p;
+    if (e->in.side == SIDE_AI || e->out.side == SIDE_AI) g_lock_key = -1;
+    return EIDOS_EVENT_CONTINUE;
+}
+
 static int32_t on_move(void *p)
 {
     EidosBattleMove *e = (EidosBattleMove *)p;
@@ -329,6 +359,11 @@ static int32_t on_move(void *p)
     if (side > 1) return EIDOS_EVENT_CONTINUE;
     if (g_turn_first < 0) g_turn_first = side;
     if (!g_turn_move[side]) g_turn_move[side] = e->move;
+    if (side == SIDE_AI) {
+        /* the move a Choice item now holds this Pokemon to */
+        g_lock_key = bget(&e->user, EIDOS_MON_FIELD_PERSONALITY);
+        g_lock_move = e->move;
+    }
     if (side == SIDE_PLAYER) {
         StMove m;
         fill_move(&m, e->move);
@@ -411,7 +446,7 @@ static void decide(void)
 static int32_t on_ai(void *p)
 {
     EidosBattleAi *e = (EidosBattleAi *)p;
-    if (e->mon.side != SIDE_AI || eidos_battle_wild() == 1) return EIDOS_EVENT_CONTINUE;
+    if (e->mon.side != SIDE_AI || eidos_battle_wild() == 1 || !port_ok()) return EIDOS_EVENT_CONTINUE;
     if (e->stage == EIDOS_AI_SWITCH) {
         decide();
         if (g_choice.kind == 1 && g_choice.index != e->mon.slot) {
@@ -437,7 +472,7 @@ static int32_t on_replace(void *p)
     EidosBattleAiReplace *e = (EidosBattleAiReplace *)p;
     StChoice c;
     int i, at = -1;
-    if (eidos_battle_wild() == 1 || e->count < 2) return EIDOS_EVENT_CONTINUE;
+    if (eidos_battle_wild() == 1 || e->count < 2 || !port_ok()) return EIDOS_EVENT_CONTINUE;
     fill_view(1);
     c = st_choose(&g_v);
     if (c.kind != 1) return EIDOS_EVENT_CONTINUE;
@@ -469,6 +504,7 @@ int32_t eidos_mod_start(void)
     eidos_on(EIDOS_EVENT_BATTLE_START, (uint32_t)(uintptr_t)on_start);
     eidos_on(EIDOS_EVENT_BATTLE_TURN, (uint32_t)(uintptr_t)on_turn);
     eidos_on(EIDOS_EVENT_BATTLE_MOVE, (uint32_t)(uintptr_t)on_move);
+    eidos_on(EIDOS_EVENT_BATTLE_SWITCH, (uint32_t)(uintptr_t)on_switch);
     eidos_on(EIDOS_EVENT_BATTLE_DAMAGE, (uint32_t)(uintptr_t)on_damage);
     eidos_on(EIDOS_EVENT_BATTLE_ABILITY, (uint32_t)(uintptr_t)on_ability);
     eidos_on(EIDOS_EVENT_BATTLE_HELD_ITEM, (uint32_t)(uintptr_t)on_item);
