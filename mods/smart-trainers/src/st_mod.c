@@ -105,9 +105,18 @@ static void fill_move(StMove *m, uint32_t id)
         case 69: case 101: m->fixed = -1; break;   /* Seismic Toss, Night Shade: the level */
         case 49: m->fixed = 20; break;   /* Sonic Boom */
         case 82: m->fixed = 40; break;   /* Dragon Rage */
+        case 117: case 68: case 243: case 368:
+            /* Bide (two hits, x2, any), Counter (physical, x2), Mirror Coat
+             * (special, x2), Metal Burst (any, x1.5) */
+            m->cat = ST_STATUS;
+            m->power = 0;
+            m->eff = ST_EFF_RETURN;
+            m->eff_stat = id == 68 ? 1 : id == 243 ? 2 : 0;
+            m->eff_stages = id == 117 ? 2 : 1;
+            m->eff_chance = id == 368 ? 15 : 20;
+            break;
         default:
-            /* Bide, Counter, Mirror Coat, Endeavor, Super Fang and the
-             * like: no damage estimate */
+            /* Endeavor, Super Fang and the like: no damage estimate */
             m->cat = ST_STATUS;
             m->power = 0;
             m->eff = ST_EFF_OTHER;
@@ -126,12 +135,31 @@ static void fill_move(StMove *m, uint32_t id)
             m->eff = ST_EFF_STATUS;
             m->eff_status = id == 92 ? ST_ST_TOXIC : status_of(sick);
         } else if (r0 != 0) {
-            int k, mask = 0, st = 0;
-            for (k = 0; k < 3; k++) {
-                int32_t t = (int32_t)mv(id, 16 + 3 * k), v = (int32_t)(int8_t)mv(id, 17 + 3 * k);
-                if (t >= 1 && t <= 7 && v) { mask |= 1 << (t - 1); if ((v < 0 ? -v : v) > st) st = v < 0 ? -v : v; }
+            /* move_value reaches only the first stat change (the game's
+             * getter, WAZA_TOOL_GetDataParam, reads the second and third
+             * from the wrong bytes; the game itself uses
+             * WAZA_TOOL_GetRankEffect, which mods cannot call yet): the
+             * moves that change more than one stat come from a table */
+            int32_t t = (int32_t)mv(id, 16), v = r0;
+            int mask = (t >= 1 && t <= 7) ? 1 << (t - 1) : 0, st = v < 0 ? -v : v;
+            switch (id) {
+            case 526: mask = (1 << ST_S_ATK) | (1 << ST_S_SPA); break;            /* Work Up */
+            case 74:  mask = (1 << ST_S_ATK) | (1 << ST_S_SPA); break;            /* Growth */
+            case 339: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF); break;            /* Bulk Up */
+            case 347: mask = (1 << ST_S_SPA) | (1 << ST_S_SPD); break;            /* Calm Mind */
+            case 349: mask = (1 << ST_S_ATK) | (1 << ST_S_SPE); break;            /* Dragon Dance */
+            case 483: mask = (1 << ST_S_SPA) | (1 << ST_S_SPD) | (1 << ST_S_SPE); break;   /* Quiver Dance */
+            case 489: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF) | (1 << ST_S_ACC); break;   /* Coil */
+            case 322: mask = (1 << ST_S_DEF) | (1 << ST_S_SPD); break;            /* Cosmic Power */
+            case 455: mask = (1 << ST_S_DEF) | (1 << ST_S_SPD); break;            /* Defend Order */
+            case 468: mask = (1 << ST_S_ATK) | (1 << ST_S_ACC); break;            /* Hone Claws */
+            case 508: mask = (1 << ST_S_ATK) | (1 << ST_S_SPE); break;            /* Shift Gear */
+            case 504: mask = (1 << ST_S_ATK) | (1 << ST_S_SPA) | (1 << ST_S_SPE); st = 2; v = 2; break;   /* Shell Smash */
+            case 174: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF); v = 1; break;     /* Curse (not a ghost) */
+            case 321: mask = (1 << ST_S_ATK) | (1 << ST_S_DEF); break;            /* Tickle */
+            default: break;
             }
-            m->eff = r0 > 0 ? ST_EFF_BOOST : ST_EFF_DROP;
+            m->eff = v > 0 ? ST_EFF_BOOST : ST_EFF_DROP;
             m->eff_stat = mask;
             m->eff_stages = st;
         } else m->eff = ST_EFF_OTHER;
@@ -172,7 +200,9 @@ static void candidates(uint32_t key, uint32_t species, uint32_t level)
     uint32_t m;
     StMove x;
     for (m = 1; m <= 559; m++) {
-        if (eidos_species_learns(species, 0, m, level) <= 0) continue;
+        /* level-up moves only (bit 1): a TM move such as Overheat on an
+         * early Tepig made every setup look fatal */
+        if ((eidos_species_learns(species, 0, m, level) & 1) == 0) continue;
         if (mv(m, 2) == 0 || mv(m, 3) <= 1) continue;
         fill_move(&x, m);
         st_foe_candidate((int32_t)key, &x);
@@ -363,6 +393,18 @@ static void decide(void)
             put("="); num(st_debug_score(&g_v, i));
         }
         out();
+        {
+            uint32_t k;
+            put("work up params 16..24:");
+            for (k = 16; k <= 24; k++) { put(" "); num((int32_t)(int8_t)mv(526, k)); }
+            out();
+        }
+        {
+            extern int32_t st_dbg[8];
+            put("setup: base_n "); num(st_dbg[0]); put(" total "); num(st_dbg[1]); put(" nf "); num(st_dbg[2]);
+            put(" d0 "); num(st_dbg[3]); put(" d1 "); num(st_dbg[4]); put(" t1 "); num(st_dbg[5]); put(" t "); num(st_dbg[6]); put(" by "); num(st_dbg[7]);
+            out();
+        }
     }
 }
 

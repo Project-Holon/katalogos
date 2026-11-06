@@ -33,7 +33,11 @@ enum {
     ST_EFF_STATUS,     /* gives the target eff_status */
     ST_EFF_HEAL,       /* heals the user heal % of its max HP */
     ST_EFF_PROTECT,
-    ST_EFF_OTHER
+    ST_EFF_OTHER,
+    ST_EFF_RETURN      /* Bide, Counter, Mirror Coat, Metal Burst: returns the
+                        * damage taken; eff_stat 0 any, 1 physical, 2 special;
+                        * eff_stages the hits it waits for; eff_chance the
+                        * multiplier x10 */
 };
 
 /* Stats and stages: index order. */

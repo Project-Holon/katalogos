@@ -23,6 +23,9 @@
 #define MAXFOES 12
 #define MAXOBS 48
 #define BIG 99
+#define RACE_CAP 30
+
+int32_t st_dbg[8];   /* the last setup look-ahead, for the debug log */
 
 /* ------------------------------------------------------------- the chart */
 
@@ -594,7 +597,10 @@ static Match match(const Cb *x, const Cb *f, int w)
 static int value(int n_me, int n_foe, int faster, float hp_left)
 {
     int win = faster ? n_me <= n_foe : n_me < n_foe;
-    int v = 100 * (imin(n_foe, 6) - imin(n_me, 6));
+    /* a long race is still a race: a boost that turns 9 hits into 6 is worth
+     * as much as one that turns 4 into 1 (a cap at 6 made it look worthless
+     * and the trainer never set up in slow early-game battles) */
+    int v = 100 * (imin(n_foe, RACE_CAP) - imin(n_me, RACE_CAP));
     if (win) v += 300;
     v += (int)(hp_left * 50);
     return v;
@@ -671,19 +677,43 @@ static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
             if (a->ability == ST_AB_SIMPLE) s *= 2;
             if (s <= 0) return -2000;
             for (k = 0; k < ST_NSTAGES; k++)
-                if (m->eff_stat & (1 << k)) {
-                    if (a2.stage[k] >= 4) return -800;   /* enough */
-                    a2.stage[k] = imin(6, a2.stage[k] + s);
-                }
+                if ((m->eff_stat & (1 << k)) && a2.stage[k] >= 4) return -800;   /* enough */
             if (hp_after <= 0.0f) return -1500;
-            a2.hp = hp_after;
-            n_me = turns(f->hp, best_move_dmg(&a2, f, w, 0));
-            n_foe = turns(hp_after, threat(f, &a2, w, 0));
-            /* worth it when the race after the boost (one turn later) is
-             * better than attacking now */
-            sc = 1000 + value(n_me + 1, n_foe + 1, speed(&a2) > speed(f), hp_after);
-            if (n_me + 1 >= base_n_me) sc -= g_cfg.setup_penalty;
-            return sc;
+            /* boost 1 to 3 times in a row while it lives through the hits,
+             * then attack: the best of these races against attacking now */
+            {
+                int times, best = -100000, best_total = BIG;
+                float hp_k = a->hp;
+                for (times = 1; times <= 3; times++) {
+                    int total, nf, any = 0;
+                    float t_k;
+                    for (k = 0; k < ST_NSTAGES; k++)
+                        if (m->eff_stat & (1 << k) && a2.stage[k] < 6) {
+                            a2.stage[k] = imin(6, a2.stage[k] + s);
+                            any = 1;
+                        }
+                    if (!any) break;
+                    t_k = threat(f, &a2, w, 0);
+                    hp_k -= t_k;
+                    if (hp_k <= 0.0f) break;
+                    a2.hp = hp_k;
+                    total = times + turns(f->hp, best_move_dmg(&a2, f, w, 0));
+                    nf = times + turns(hp_k, t_k);
+                    if (times == 1) {
+                        StMove tb;
+                        threat(f, a, w, &tb);
+                        st_dbg[7] = tb.id * 100 + tb.type;
+                        st_dbg[0] = m->eff_stat * 1000 + base_n_me; st_dbg[1] = total; st_dbg[2] = nf;
+                        st_dbg[3] = (int32_t)(dme0 * 1000); st_dbg[4] = (int32_t)(best_move_dmg(&a2, f, w, 0) * 1000);
+                        st_dbg[5] = (int32_t)(t_k * 1000); st_dbg[6] = (int32_t)(t * 1000);
+                    }
+                    sc = 1000 + value(total, nf, speed(&a2) > speed(f), hp_k);
+                    if (sc > best) { best = sc; best_total = total; }
+                }
+                if (best == -100000) return -1500;
+                if (best_total >= base_n_me) best -= g_cfg.setup_penalty;
+                return best;
+            }
         case ST_EFF_DROP:
             k = blocks_drop(f, m->eff_stat);
             if (k == 2) return -3000;   /* Contrary, Defiant, Clear Body ... */
@@ -728,6 +758,26 @@ static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
                 n_foe = turns(hp2, t);
                 return 1000 + value(n_me + 1, n_foe, faster, hp2) - 50;
             }
+        case ST_EFF_RETURN: {
+            /* the foe's next hits come back multiplied, if this Pokemon
+             * lives through them and the foe's best move is of the kind it
+             * returns; worth it when it wins the race attacking would lose */
+            StMove bm;
+            float hit, back, hp_left;
+            int hits = m->eff_stages > 0 ? m->eff_stages : 1;
+            threat(f, a, w, &bm);
+            if (!bm.id || bm.cat == ST_STATUS) return -1000;
+            if (m->eff_stat == 1 && bm.cat != ST_PHYSICAL) return -1000;
+            if (m->eff_stat == 2 && bm.cat != ST_SPECIAL) return -1000;
+            hit = t;
+            hp_left = a->hp - hit * (float)hits;
+            if (hp_left <= 0.0f) return -1500;
+            back = hit * (float)hits * (float)m->eff_chance / 10.0f * a->maxhp / f->maxhp;
+            if (back >= f->hp) return 1000 + value(hits, turns(a->hp, t), 1, hp_left) + 200;
+            n_me = hits + turns(f->hp - back, dme0);
+            n_foe = turns(a->hp, t);
+            return 1000 + value(n_me, n_foe, faster, hp_left) - 50;
+        }
         case ST_EFF_PROTECT:
             return 300;
         default:
