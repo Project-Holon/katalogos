@@ -141,9 +141,17 @@ typedef struct Field {
     int taunted_until;              /* we cannot use status moves */
     int stockpile;
     int ring;                       /* Aqua Ring or Ingrain on the active one */
+    int own_active_key, own_in_turn;   /* our active one and the turn it came in (Fake Out) */
+    int used_mask;                  /* its moves used since it came in (Last Resort) */
+    int future_until;               /* our Future Sight lands at the end of this turn */
 } Field;
 
 static Field g_f;
+
+/* A move that would fail, or does nothing in a single battle: a turn spent
+ * for nothing, below every option that does something, above the ones that
+ * help the foe (a drop into Contrary, -3000) */
+#define WASTED_TURN (-2500)
 
 static void field_reset(void)
 {
@@ -152,6 +160,7 @@ static void field_reset(void)
     for (j = 0; j < (int)sizeof g_f; j++)
         p[j] = 0;
     g_f.seeded_key = g_f.conf_key = g_f.yawn_key = g_f.lock_key = g_f.foe_active_key = g_f.bad_key = -1;
+    g_f.own_active_key = -1; g_f.future_until = -1;
 }
 
 /* The moves the core knows by their number (the national move numbers, the
@@ -807,7 +816,7 @@ static int score_rule(const StView *v, const Cb *a, const Cb *f, const StMove *m
     int fkey = f->mon->key;
     float acc = m->acc > 0 && m->acc < 100 ? (float)m->acc / 100.0f : 1.0f;
 
-    if (r == R_USELESS) return lost - 400;
+    if (r == R_USELESS) return WASTED_TURN;
     if (hp_after <= 0.0f && r != R_DBOND) return -1500;
     switch (r) {
     case R_REFLECT: case R_LSCREEN: {
@@ -953,6 +962,11 @@ static int score_rule(const StView *v, const Cb *a, const Cb *f, const StMove *m
 static void note_choice(const StView *v, const StChoice *ch)
 {
     int ai = active_own(v), fi = active_foe(v), arg;
+    if (ch->kind == 0 && ai >= 0 && ch->index >= 0 && ch->index < v->own[ai].nmoves) {
+        int id = v->own[ai].moves[ch->index].id;
+        g_f.used_mask |= 1 << ch->index;
+        if ((id == 248 || id == 353) && g_f.future_until < g_f.turn) g_f.future_until = g_f.turn + 2;
+    }
     if (ch->kind == 1) {
         g_f.own_seeded = 0; g_f.sub_until = 0; g_f.ring = 0; g_f.stockpile = 0;
         return;
@@ -976,35 +990,174 @@ static void note_choice(const StView *v, const StChoice *ch)
     }
 }
 
+/* A move that fails by the game's rules now, from what the trainer knows.
+ * Ids are the game's move numbers. */
+static int would_fail(const StView *v, const Cb *a, const Cb *f, const StMove *m, int i)
+{
+    int k, all = 0;
+    switch (m->id) {
+    case 252:                       /* Fake Out: only on its first turn in */
+        return v->turn != g_f.own_in_turn;
+    case 387:                       /* Last Resort: every other move used first */
+        for (k = 0; k < a->mon->nmoves; k++)
+            if (k != i && a->mon->moves[k].id) all |= 1 << k;
+        return (g_f.used_mask & all) != all;
+    case 248: case 353:             /* Future Sight, Doom Desire: one at a time */
+        return g_f.future_until >= v->turn;
+    case 138:                       /* Dream Eater: the foe asleep */
+        return f->status != ST_ST_SLEEP;
+    case 173: case 214:             /* Snore, Sleep Talk: asleep ourselves */
+        return a->status != ST_ST_SLEEP;
+    case 283:                       /* Endeavor: our HP below the foe's */
+        return a->hp * (float)a->maxhp >= f->hp * (float)f->maxhp;
+    default:
+        return 0;
+    }
+}
+
+/* The chance that own Pokemon a moves before foe f: a foe's Speed is only
+ * known within its IVs (0 to 31, no EVs, as base_stat), so ours is placed
+ * in that range; the same multipliers (stages, paralysis, a Scarf seen)
+ * apply to both ends.  An own Pokemon against an own one: 1 or 0. */
+/* The chance the defender's ability takes the move whole (Flash Fire on a
+ * Fire move, Levitate on a Ground one, ...) when that ability is possible
+ * but not shown: its share of the species' abilities.  0 once the ability
+ * is known (damage() already gives 0 for a shown absorber). */
+static float absorb_chance(const Cb *d, const StMove *m)
+{
+    static const int fire[] = { ST_AB_FLASH_FIRE, 0 };
+    static const int ground[] = { ST_AB_LEVITATE, 0 };
+    static const int water[] = { ST_AB_WATER_ABSORB, ST_AB_STORM_DRAIN, ST_AB_DRY_SKIN, 0 };
+    static const int elec[] = { ST_AB_VOLT_ABSORB, ST_AB_LIGHTNING_ROD, ST_AB_MOTOR_DRIVE, 0 };
+    static const int grass[] = { ST_AB_SAP_SIPPER, 0 };
+    const int *list = m->type == ST_FIRE ? fire : m->type == ST_GROUND ? ground
+                    : m->type == ST_WATER ? water : m->type == ST_ELECTRIC ? elec
+                    : m->type == ST_GRASS ? grass : 0;
+    int i, j, n = 0, hit = 0;
+
+    if (!list || d->ability || m->cat == ST_STATUS) return 0.0f;
+    for (i = 0; i < 3; i++) {
+        if (!d->maybe[i]) continue;
+        n++;
+        for (j = 0; list[j]; j++)
+            if (d->maybe[i] == list[j]) { hit++; break; }
+    }
+    return n ? (float)hit / (float)n : 0.0f;
+}
+
+/* A move scored at or above this KOs the foe on the field this turn: the
+ * guess that the player switches does not lower it (a Pokemon at 8% is
+ * rarely saved, and a sure KO beats a guess; Volcarona's Overheat beat a
+ * KO with Bug Buzz on an 8% Chandelure through the blend). */
+#define ST_KO_SCORE 4500
+
+/* Moves that take the next turn to recharge (BW's). */
+static int is_recharge(int id)
+{
+    return id == 63 || id == 307 || id == 308 || id == 338 || id == 416 || id == 439 || id == 459;
+}
+
+static float p_first(const Cb *a, const Cb *f)
+{
+    float sa = speed(a), sf = speed(f), mult, lo, hi;
+    int base = f->mon ? f->mon->stat[ST_SPE] : 0;
+    if (!f->foe || base <= 0 || f->stat[ST_SPE] <= 0) return sa > sf ? 1.0f : 0.0f;
+    mult = sf / f->stat[ST_SPE];
+    lo = ((float)((2 * base) * f->level / 100) + 5.0f) * mult;
+    hi = ((float)((2 * base + 31) * f->level / 100) + 5.0f) * mult;
+    if (sa > hi) return 1.0f;
+    if (sa < lo) return 0.0f;
+    return (sa - lo) / (hi - lo > 0.5f ? hi - lo : 0.5f);
+}
+
+/* The choice explained (bench/explain.js): for the option being scored, its
+ * reason code and the numbers behind its score.  g_ex_cur is the option's
+ * slot, -1 while a score is not to be recorded (the blend with a predicted
+ * switch-in scores the move twice). */
+#define EX_N 10
+#define EX_MAXOPT 12        /* ST_MAXOPT, defined further down */
+int32_t g_ex[EX_MAXOPT][EX_N];
+int g_ex_cur = -1;
+static float g_x_d, g_x_t, g_x_hp;
+static int g_x_nme, g_x_nfoe, g_x_fast;
+static int ex_rec(int code, int val, int rule)
+{
+    if (g_ex_cur >= 0 && g_ex_cur < EX_MAXOPT) {
+        int32_t *e = g_ex[g_ex_cur];
+        e[0] = code; e[1] = val; e[2] = (int32_t)(g_x_d * 1000); e[3] = (int32_t)(g_x_t * 1000);
+        e[4] = g_x_nme; e[5] = g_x_nfoe; e[6] = g_x_fast; e[7] = (int32_t)(g_x_hp * 1000); e[8] = rule;
+    }
+    return val;
+}
+#define RET(code, v) return ex_rec((code), (v), 0)
+
 static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
 {
     const StMove *m = &a->mon->moves[i];
     int w = v->weather;
     float t = threat(f, a, w, 0), d;
+    g_x_d = 0; g_x_t = t; g_x_hp = a->hp; g_x_nme = g_x_nfoe = 0;
     int faster, n_me, n_foe, sc;
     StMove fm;
 
-    if (!m->id || m->pp <= 0) return -100000;
-    if (a->mon->choice_lock >= 0 && a->mon->choice_lock != i) return -100000;
+    if (!m->id || m->pp <= 0) RET(1, -100000);
+    if (a->mon->choice_lock >= 0 && a->mon->choice_lock != i) RET(2, -100000);
     faster = speed(a) > speed(f);
     if (m->prio > 0) faster = 1;
+    g_x_fast = faster;
+    if (would_fail(v, a, f, m, i)) RET(26, WASTED_TURN);
     (void)fm;
 
     if (m->cat != ST_STATUS) {
         d = damage(a, f, m, w);
-        if (d <= 0) return -5000;
+        g_x_d = d;
+        if (d <= 0) RET(3, -5000);
         if (m->self_ko) {
             /* only when this Pokemon is lost anyway */
-            if (turns(a->hp, t) > 1 && !(d >= f->hp)) return -3000;
+            if (turns(a->hp, t) > 1 && !(d >= f->hp)) RET(4, -3000);
         }
-        if (faster && d >= f->hp && ko_turns(f, d) == 1)
-            return 5000 + (int)(d * 100) - (m->acc > 0 && m->acc < 100 ? (100 - m->acc) * 20 : 0);
         n_me = ko_turns(f, d + (f->item == ST_IT_LIFE_ORB ? 0.1f : 0.0f));
         n_foe = ko_turns(a, t + (a->item == ST_IT_LIFE_ORB ? 0.1f : 0.0f));
+        g_x_nme = n_me; g_x_nfoe = n_foe;
+        /* Whether it KOs now is decided by the damage when it hits; the
+         * accuracy is the chance it does (it is taken off the KO's score
+         * below).  damage() folds the accuracy in, the right measure for a
+         * race but not for one hit: a 90% move doing 100% read as 90%, "KOs
+         * in 2" (bench/calib.js: "we KO it" missed 7% of real KOs). */
+        float d_hit = m->acc > 0 && m->acc < 100 ? d * 100.0f / (float)m->acc : d;
+        /* A KO's score: damage past the foe's HP is worth nothing (Giga
+         * Impact's overkill beat X-Scissor on a 23% Haxorus and cost a
+         * recharge turn), a recharge loses the tie, and a possible absorbing
+         * ability (Flash Fire on a Chandelure not yet seen to have it) makes
+         * it a KO only by the odds: the hit absorbed is a wasted turn. */
+        float p_abs = absorb_chance(f, m);
+        float d_cap = d_hit < f->hp ? d_hit : f->hp;
+        int ko_base = 5000 + (int)(d_cap * 100) - (m->acc > 0 && m->acc < 100 ? (100 - m->acc) * 20 : 0)
+                      - (is_recharge(m->id) ? 300 : 0);
+        if (p_abs > 0.0f) ko_base = (int)((1.0f - p_abs) * (float)ko_base + p_abs * 500.0f);
+        /* Slower, but its hit does not KO us first: the KO still comes this
+         * turn (Bouffalant's Earthquake on an 8% Chandelure, whose moves
+         * could not stop it, was scored as a plain hit and lost to a switch) */
+        if (!faster && d_hit >= f->hp && ko_turns(f, d_hit) == 1 && t < a->hp) {
+            int ko = ko_base - 200;
+            RET(28, ko);
+        }
+        if (faster && d_hit >= f->hp && ko_turns(f, d_hit) == 1) {
+            int ko = ko_base;
+            /* Moving first is only sure when we outspeed every Speed the foe
+             * could have (its IVs are not known: a trainer's run 0 to 31).
+             * When it may move first and its hit KOs us, the KO is weighed
+             * by the chance we move first against the race lost as the
+             * slower one (bench/explain.js: Chandelure at 34% "KO'd"
+             * Toxicroak at 143 Speed against its 136 estimate; it had 147). */
+            float pf = m->prio > 0 ? 1.0f : p_first(a, f);
+            if (pf >= 1.0f || t < a->hp) RET(5, ko);
+            RET(27, (int)(pf * (float)ko + (1.0f - pf) * (float)(1000 + value(n_me, n_foe, 0, a->hp) + (int)(d * 100))));
+        }
         sc = 1000 + value(n_me, n_foe, faster, a->hp) + (int)(d * 100);
         if (m->recoil) sc -= (int)(d * m->recoil);
         if (m->eff == ST_EFF_DROP && blocks_drop(f, m->eff_stat) == 2 && m->eff_chance >= 100) sc -= 150;
-        return sc;
+        RET(6, sc);
     }
 
     {
@@ -1013,27 +1166,28 @@ static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
         int s, k, base_n_me;
         float dme0 = best_move_dmg(a, f, w, 0);
         base_n_me = turns(f->hp, dme0);
-        if (g_f.taunted_until > g_f.turn) return -4000;   /* Taunt: it would fail */
+        g_x_d = dme0; g_x_hp = hp_after; g_x_nme = base_n_me; g_x_nfoe = turns(hp_after, t);
+        if (g_f.taunted_until > g_f.turn) RET(7, -4000);   /* Taunt: it would fail */
         /* a Choice item locks it into the move: a status move would be all it
          * could use until it switches (Trick, 271, hands the item over) */
         if ((a->item == ST_IT_CHOICE_BAND || a->item == ST_IT_CHOICE_SPECS || a->item == ST_IT_CHOICE_SCARF) &&
-            a->mon->choice_lock < 0 && m->id != 271) return -2500;
+            a->mon->choice_lock < 0 && m->id != 271) RET(8, -2500);
         {
             int arg, r = rule_of(m->id, &arg);
             if (r != R_NONE)
-                return score_rule(v, a, f, m, r, arg, t, hp_after, base_n_me, dme0, faster);
+                return ex_rec(9, score_rule(v, a, f, m, r, arg, t, hp_after, base_n_me, dme0, faster), r);
         }
         switch (m->eff) {
         case ST_EFF_BOOST:
-            if (!g_cfg.setup) return -2000;
-            if (has_ab(f, ST_AB_UNAWARE) == 2) return -1000;
+            if (!g_cfg.setup) RET(10, -2000);
+            if (has_ab(f, ST_AB_UNAWARE) == 2) RET(11, -1000);
             s = m->eff_stages;
             if (a->ability == ST_AB_CONTRARY) s = -s;
             if (a->ability == ST_AB_SIMPLE) s *= 2;
-            if (s <= 0) return -2000;
+            if (s <= 0) RET(12, -2000);
             for (k = 0; k < ST_NSTAGES; k++)
-                if ((m->eff_stat & (1 << k)) && a2.stage[k] >= 4) return -800;   /* enough */
-            if (hp_after <= 0.0f) return -1500;
+                if ((m->eff_stat & (1 << k)) && a2.stage[k] >= 4) RET(13, -800);   /* enough */
+            if (hp_after <= 0.0f) RET(14, -1500);
             /* boost 1 to 3 times in a row while it lives through the hits,
              * then attack: the best of these races against attacking now */
             {
@@ -1065,27 +1219,27 @@ static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
                     sc = 1000 + value(total, nf, speed(&a2) > speed(f), hp_k);
                     if (sc > best) { best = sc; best_total = total; }
                 }
-                if (best == -100000) return -1500;
+                if (best == -100000) RET(14, -1500);
                 if (best_total >= base_n_me) best -= g_cfg.setup_penalty;
-                return best;
+                RET(15, best);
             }
         case ST_EFF_DROP:
             k = blocks_drop(f, m->eff_stat);
-            if (k == 2) return -3000;   /* Contrary, Defiant, Clear Body ... */
+            if (k == 2) RET(16, -3000);   /* Contrary, Defiant, Clear Body ... */
             for (s = 0; s < ST_NSTAGES; s++)
                 if (m->eff_stat & (1 << s)) {
-                    if (f2.stage[s] <= -4) return -800;
+                    if (f2.stage[s] <= -4) RET(17, -800);
                     f2.stage[s] = imax(-6, f2.stage[s] - (m->eff_stages > 0 ? m->eff_stages : 1));
                 }
-            if (hp_after <= 0.0f) return -1500;
+            if (hp_after <= 0.0f) RET(14, -1500);
             n_me = turns(f->hp, best_move_dmg(a, &f2, w, 0));
             n_foe = turns(hp_after, threat(&f2, a, w, 0));
             sc = 1000 + value(n_me + 1, n_foe + 1, speed(a) > speed(&f2), hp_after) - 100;
             if (k == 1) sc -= 250;
-            return sc;
+            RET(18, sc);
         case ST_EFF_STATUS:
-            if (status_immune(f, m)) return -3000;
-            if (hp_after <= 0.0f) return -1500;
+            if (status_immune(f, m)) RET(19, -3000);
+            if (hp_after <= 0.0f) RET(14, -1500);
             n_me = base_n_me;
             n_foe = turns(hp_after, t);
             switch (m->eff_status) {
@@ -1103,15 +1257,15 @@ static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
             }
             sc = 1000 + value(n_me + 1, n_foe, speed(a) > speed(f), hp_after) - 50;
             if (m->acc > 0 && m->acc < 100) sc -= (100 - m->acc) * 3;
-            return sc;
+            RET(20, sc);
         case ST_EFF_HEAL:
-            if (a->hp > 0.6f) return -500;
+            if (a->hp > 0.6f) RET(21, -500);
             {
                 float hp2 = fmin_(1.0f, a->hp + (float)m->heal / 100.0f) - t;
-                if (hp2 <= a->hp - t + 0.05f || hp2 <= 0) return -500;
+                if (hp2 <= a->hp - t + 0.05f || hp2 <= 0) RET(21, -500);
                 n_me = base_n_me;
                 n_foe = turns(hp2, t);
-                return 1000 + value(n_me + 1, n_foe, faster, hp2) - 50;
+                RET(22, 1000 + value(n_me + 1, n_foe, faster, hp2) - 50);
             }
         case ST_EFF_RETURN: {
             /* the foe's next hits come back multiplied, if this Pokemon
@@ -1121,17 +1275,17 @@ static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
             float hit, back, hp_left;
             int hits = m->eff_stages > 0 ? m->eff_stages : 1;
             threat(f, a, w, &bm);
-            if (!bm.id || bm.cat == ST_STATUS) return -1000;
-            if (m->eff_stat == 1 && bm.cat != ST_PHYSICAL) return -1000;
-            if (m->eff_stat == 2 && bm.cat != ST_SPECIAL) return -1000;
+            if (!bm.id || bm.cat == ST_STATUS) RET(23, -1000);
+            if (m->eff_stat == 1 && bm.cat != ST_PHYSICAL) RET(23, -1000);
+            if (m->eff_stat == 2 && bm.cat != ST_SPECIAL) RET(23, -1000);
             hit = t;
             hp_left = a->hp - hit * (float)hits;
-            if (hp_left <= 0.0f) return -1500;
+            if (hp_left <= 0.0f) RET(14, -1500);
             back = hit * (float)hits * (float)m->eff_chance / 10.0f * a->maxhp / f->maxhp;
-            if (back >= f->hp) return 1000 + value(hits, turns(a->hp, t), 1, hp_left) + 200;
+            if (back >= f->hp) RET(24, 1000 + value(hits, turns(a->hp, t), 1, hp_left) + 200);
             n_me = hits + turns(f->hp - back, dme0);
             n_foe = turns(a->hp, t);
-            return 1000 + value(n_me, n_foe, faster, hp_left) - 50;
+            RET(24, 1000 + value(n_me, n_foe, faster, hp_left) - 50);
         }
         case ST_EFF_PROTECT:
         default:
@@ -1140,9 +1294,9 @@ static int score_move(const StView *v, const Cb *a, const Cb *f, int i)
              * a flat score here beat every attack once the race was lost,
              * and the trainer used Helping Hand or Gastro Acid turn after
              * turn while it lost */
-            if (hp_after <= 0.0f) return -1500;
-            return 1000 + value(base_n_me + 1, turns(hp_after, t), faster, hp_after) -
-                   (m->eff == ST_EFF_PROTECT ? 150 : 250);
+            if (hp_after <= 0.0f) RET(14, -1500);
+            RET(25, 1000 + value(base_n_me + 1, turns(hp_after, t), faster, hp_after) -
+                   (m->eff == ST_EFF_PROTECT ? 150 : 250));
         }
     }
 }
@@ -1188,11 +1342,21 @@ static int own_bench(const StView *v)
     return n;
 }
 
+/* Points for an active Pokemon saved by a switch (a whole HP bar), 0 off:
+ * see switch_value.  st_set_preserve. */
+static int g_preserve = 0;
+/* 0: the bonus counts the HP saved; 1: the seen foes, other than the one in
+ * now, the saved Pokemon wins its race against (a Pokemon still needed). */
+static int g_preserve_mode = 0;
+void st_set_preserve(int32_t v) { g_preserve = v % 100000; g_preserve_mode = v / 100000; }
+static int foes_beaten(const StView *v, const Cb *x, int *beat_x);
+
 static int switch_value(const StView *v, const Cb *a, const Cb *f, int x, int entering_hit)
 {
     Cb c;
     Match r;
     float hit = 0;
+    int sv;
     cb_own(&c, &v->own[x]);
     c.hp -= hazard_hit(&c);
     if (c.hp <= 0) return -4000;
@@ -1204,7 +1368,26 @@ static int switch_value(const StView *v, const Cb *a, const Cb *f, int x, int en
         if (c.hp <= 0) return -4000;
     }
     r = match(&c, f, v->weather);
-    return value(r.n_me + (entering_hit ? 1 : 0), r.n_foe, r.faster, c.hp);
+    sv = value(r.n_me + (entering_hit ? 1 : 0), r.n_foe, r.faster, c.hp);
+    /* What staying costs: when the active one loses its race it is thrown
+     * away, and a switch-in that takes the hits in its place (and is not
+     * KO'd at once) saves it for later.  bench/blunder playouts: Servine at
+     * 46% before a Pansear, Panpour behind, wins 92-100% by switching and
+     * 0-33% by attacking, while the races alone scored the switch below
+     * staying. */
+    if (entering_hit && g_preserve > 0 && a != f && a->hp > 0) {
+        Match st = match(a, f, v->weather);
+        int stay_wins = st.faster ? st.n_me <= st.n_foe : st.n_me < st.n_foe;
+        if (!stay_wins && r.n_foe >= 2) {
+            if (g_preserve_mode == 1)
+                /* foes_beaten counts the one in now too: a lost race, so it
+                 * is not among them */
+                sv += g_preserve * foes_beaten(v, a, 0);
+            else
+                sv += (int)((float)g_preserve * a->hp);
+        }
+    }
+    return sv;
 }
 
 /* ------------------------------------------------------------- the search */
@@ -1598,7 +1781,7 @@ static void learn_switch(const StView *v)
  * drawn from the scores (a softmax at a temperature) instead of the best,
  * and the options of the last choice can be read back for training.
  */
-#define ST_NF 48
+#define ST_NF 64
 #define ST_H1 64
 #define ST_H2 32
 #define ST_MAXOPT 12
@@ -1673,6 +1856,43 @@ static float expneg(float x)
     return r;
 }
 
+/* x wins the one-exchange race against f (match(): faster needs no more
+ * hits than the foe, slower fewer) */
+static int wins_race(const Cb *x, const Cb *f, int w)
+{
+    Match r = match(x, f, w);
+    return r.faster ? r.n_me <= r.n_foe : r.n_me < r.n_foe;
+}
+
+/* how many of our Pokemon (not the active one when skip_active) win the race
+ * against f; and how many of the foes we have seen x wins against */
+static int own_beating(const StView *v, const Cb *f, int skip_active)
+{
+    int i, n = 0;
+    Cb c;
+    for (i = 0; i < v->nown; i++) {
+        if (!v->own[i].present || v->own[i].fainted) continue;
+        if (skip_active && v->own[i].active) continue;
+        cb_own(&c, &v->own[i]);
+        n += wins_race(&c, f, v->weather);
+    }
+    return n;
+}
+
+static int foes_beaten(const StView *v, const Cb *x, int *beat_x)
+{
+    int i, n = 0, b = 0;
+    Cb c;
+    for (i = 0; i < v->nfoe; i++) {
+        if (!v->foe[i].present || v->foe[i].fainted) continue;
+        cb_foe(&c, &v->foe[i]);
+        n += wins_race(x, &c, v->weather);
+        b += wins_race(&c, x, v->weather);
+    }
+    if (beat_x) *beat_x = b;
+    return n;
+}
+
 /* The state part of the features, the same for every option. */
 static void state_features(const StView *v, const Cb *a, const Cb *f, float p_switch, float *x)
 {
@@ -1697,6 +1917,25 @@ static void state_features(const StView *v, const Cb *a, const Cb *f, float p_sw
     x[15] = (g_f.foe_reflect_until > g_f.turn || g_f.foe_screen_until > g_f.turn) ? 1.0f : 0.0f;
     x[16] = p_switch;
     x[17] = (float)imin(v->turn, 30) / 30.0f;
+    /* answers in the back: our bench that wins against the foe now in */
+    x[48] = (float)own_beating(v, f, 1) / 6.0f;
+    /* everything of ours the foe's active wins against (its sweep threat) */
+    {
+        int i, n = 0;
+        Cb c;
+        for (i = 0; i < v->nown; i++) {
+            if (!v->own[i].present || v->own[i].fainted) continue;
+            cb_own(&c, &v->own[i]);
+            n += wins_race(f, &c, v->weather);
+        }
+        x[49] = (float)n / 6.0f;
+    }
+    if (a) {
+        int beat_a;
+        x[50] = (float)foes_beaten(v, a, &beat_a) / 6.0f;   /* our active's sweep */
+        x[51] = (float)beat_a / 6.0f;                        /* seen foes that beat it */
+        x[52] = wins_race(a, f, v->weather);
+    }
     x[47] = 1.0f;
 }
 
@@ -1723,6 +1962,22 @@ static void move_features(const StView *v, const Cb *a, const Cb *f, const StMov
     x[38] = r == R_OHKO || r == R_DRUM || r == R_DBOND;
     x[39] = r == R_REST || r == R_HEAL50 || r == R_SWALLOW || r == R_STOCKPILE;
     x[40] = r == R_USELESS;
+    /* a boost: does the race turn our way at the new stages (one use), and
+     * how many seen foes would we beat then */
+    if (m->eff == ST_EFF_BOOST) {
+        Cb a2 = *a;
+        int k;
+        for (k = 0; k < ST_NSTAGES; k++)
+            if (m->eff_stat & (1 << k)) a2.stage[k] = imin(6, a2.stage[k] + m->eff_stages);
+        x[53] = wins_race(&a2, f, v->weather);
+        x[54] = (float)foes_beaten(v, &a2, 0) / 6.0f;
+    }
+    /* a damaging hit that KOs while we move first */
+    if (m->cat != ST_STATUS) {
+        Match mr = match(a, f, v->weather);
+        x[55] = (d >= f->hp && (mr.faster || m->prio > 0)) ? 1.0f : 0.0f;
+        x[56] = d >= f->hp ? 1.0f : 0.0f;
+    }
 }
 
 static void switch_features(const StView *v, const Cb *a, const Cb *f, int x_idx, int entering, float *x)
@@ -1739,6 +1994,39 @@ static void switch_features(const StView *v, const Cb *a, const Cb *f, int x_idx
         StMove bm;
         threat(f, a, v->weather, &bm);
         x[44] = bm.id ? clampf(damage(f, &c, &bm, v->weather), 0, 2) : 0.0f;
+    }
+    {
+        /* the switch-in's own race against the foe in, after the entry hit
+         * when it comes in during the turn: faster, hits each side needs,
+         * whether it wins, and how many seen foes it beats */
+        Match r = match(&c, f, v->weather);
+        float hp_after = c.hp - (entering && a ? x[44] : 0.0f) - h;
+        Cb c2 = c;
+        int n_foe;
+        c2.hp = hp_after;
+        n_foe = hp_after > 0 ? ko_turns(&c2, r.d_foe) : 0;
+        x[57] = (float)r.faster;
+        x[58] = (float)imin(r.n_me, 10) / 10.0f;
+        x[59] = (float)imin(n_foe, 10) / 10.0f;
+        x[60] = hp_after > 0 && (r.faster ? r.n_me <= n_foe : r.n_me < n_foe);
+        x[61] = (float)foes_beaten(v, &c, 0) / 6.0f;
+        x[62] = hp_after > 0 ? clampf(hp_after, 0, 1) : 0.0f;
+    }
+}
+
+/* When the hand-made rule lets a switch through (bench/explain.js showed a
+ * switch-in that beat a one-hit KO by nearly 300 blocked because its own race
+ * value was 29): 0 its own value 300 or more, 1 its gain over staying 300 or
+ * more, 2 either, 3 a gain of 200 or more. */
+static int g_swrule = 3;            /* adopted 2026-11-08: in-game +0.8, random teams not worse */
+void st_set_swrule(int32_t v) { g_swrule = v; }
+static int switch_allowed(int s, int stay_v)
+{
+    switch (g_swrule) {
+    case 1: return s - stay_v >= 300;
+    case 2: return s >= 300 || s - stay_v >= 300;
+    case 3: return s - stay_v >= 200;
+    default: return s >= 300;
     }
 }
 
@@ -1757,9 +2045,16 @@ static StChoice choose_options(const StView *v, const Cb *a, const Cb *f, int ai
     if (a) {
         /* the moves, as the hand-made choice scores them */
         for (i = 0; i < v->own[ai].nmoves && n < ST_MAXOPT; i++) {
-            int s = score_move(v, a, f, i);
+            int s;
+            g_ex_cur = n;
+            s = score_move(v, a, f, i);
+            g_ex_cur = -1;
             if (s <= -50000) continue;
-            if (p > 0.0f) s = (int)((1.0f - p) * (float)s + p * (float)score_move(v, a, &cand, i));
+            if (p > 0.0f && s < ST_KO_SCORE) {
+                int s2 = score_move(v, a, &cand, i);
+                g_ex[n][9] = (int32_t)(p * 1000) * 100000 + (s2 + 50000);   /* the blend: p and the score against the predicted switch-in */
+                s = (int)((1.0f - p) * (float)s + p * (float)s2);
+            } else g_ex[n][9] = 0;
             kind[n] = 0; idx[n] = i; hand[n] = (float)s;
             { int k; for (k = 0; k < ST_NF; k++) feat[n * ST_NF + k] = base[k]; }
             move_features(v, a, f, &v->own[ai].moves[i], &feat[n * ST_NF]);
@@ -1773,13 +2068,24 @@ static StChoice choose_options(const StView *v, const Cb *a, const Cb *f, int ai
         if (g_cfg.switching && !v->trapped) {
             Match stay = match(a, f, v->weather);
             int stay_v = value(stay.n_me, stay.n_foe, stay.faster, a->hp);
-            int rule_ok = g_switch_streak < 2 && top < 5000;
+            int rule_ok = g_switch_streak < 2 && top < ST_KO_SCORE;
             for (i = 0; i < v->nown && n < ST_MAXOPT; i++) {
-                int s;
+                int s, ok;
                 if (i == ai || !v->own[i].present || v->own[i].fainted) continue;
                 s = switch_value(v, a, f, i, 1);
                 kind[n] = 1; idx[n] = i;
-                hand[n] = (float)(top + s - stay_v - g_cfg.switch_margin - (rule_ok && s >= 300 ? 0 : 3000));
+                ok = rule_ok && switch_allowed(s, stay_v);
+                hand[n] = (float)(top + s - stay_v - g_cfg.switch_margin - (ok ? 0 : 3000));
+                {
+                    /* the switch explained: its race value, staying's, the best
+                     * move's score, the margin, and the penalty if the rule
+                     * (at most two switches in a row, no switch away from a
+                     * KO, a gain of 300 or more) did not allow it */
+                    int32_t *e = g_ex[n];
+                    e[0] = 30; e[1] = (int32_t)hand[n]; e[2] = s; e[3] = stay_v; e[4] = top;
+                    e[5] = g_cfg.switch_margin; e[6] = ok ? 0 : 3000;
+                    e[7] = g_switch_streak; e[8] = top >= ST_KO_SCORE; e[9] = 0;
+                }
                 { int k; for (k = 0; k < ST_NF; k++) feat[n * ST_NF + k] = base[k]; }
                 switch_features(v, a, f, i, 1, &feat[n * ST_NF]);
                 n++;
@@ -1790,6 +2096,7 @@ static StChoice choose_options(const StView *v, const Cb *a, const Cb *f, int ai
         for (i = 0; i < v->nown && n < ST_MAXOPT; i++) {
             if (!v->own[i].present || v->own[i].fainted || v->own[i].active) continue;
             kind[n] = 1; idx[n] = i; hand[n] = (float)switch_value(v, f, f, i, 0);
+            { int32_t *e = g_ex[n]; int k; for (k = 0; k < EX_N; k++) e[k] = 0; e[0] = 31; e[1] = (int32_t)hand[n]; }
             { int k; for (k = 0; k < ST_NF; k++) feat[n * ST_NF + k] = base[k]; }
             switch_features(v, 0, f, i, 0, &feat[n * ST_NF]);
             n++;
@@ -1871,16 +2178,16 @@ static StChoice choose_inner(const StView *v)
         float p = predict_switch(v, &a, &f, &cand);
         for (i = 0; i < v->own[ai].nmoves; i++) {
             int s = score_move(v, &a, &f, i);
-            if (p > 0.0f && s > -50000) {
+            if (p > 0.0f && s > -50000 && s < ST_KO_SCORE) {
                 int s2 = score_move(v, &a, &cand, i);
-                /* a knock out of the one on the field still counts when it
-                 * stays; against the switch-in the hit lands on entry */
+                /* against the switch-in the hit lands on entry; a sure KO of
+                 * the one on the field is not blended (ST_KO_SCORE) */
                 s = (int)((1.0f - p) * (float)s + p * (float)s2);
             }
             if (s > ch.score) { ch.kind = 0; ch.index = i; ch.score = s; }
         }
     }
-    if (g_cfg.switching && !v->trapped && g_switch_streak < 2 && ch.score < 5000) {
+    if (g_cfg.switching && !v->trapped && g_switch_streak < 2 && ch.score < ST_KO_SCORE) {
         Match stay = match(&a, &f, v->weather);
         int stay_v = value(stay.n_me, stay.n_foe, stay.faster, a.hp);
         int best_x = -1, best_s = -1000000;
@@ -1892,7 +2199,7 @@ static StChoice choose_inner(const StView *v)
         }
         /* switch only for a clear gain: losing the race where we are and
          * winning it with the other one */
-        if (best_x >= 0 && best_s > stay_v + g_cfg.switch_margin && best_s >= 300) {
+        if (best_x >= 0 && best_s > stay_v + g_cfg.switch_margin && switch_allowed(best_s, stay_v)) {
             ch.kind = 1; ch.index = best_x; ch.score = best_s;
             g_switch_streak++;
             return ch;
@@ -1900,6 +2207,29 @@ static StChoice choose_inner(const StView *v)
     }
     g_switch_streak = 0;
     return ch;
+}
+
+/* The core's estimates for the matchup on the field, for calibration
+ * (bench/calib.js compares them with the battle's truth): the threat (the
+ * foe's best hit on our active one, a share of its max HP), our best move's
+ * damage on the foe (a share of the foe's), both Speeds, the chance we move
+ * first, and the foe's estimated Atk, Def, SpA, SpD.  0s when there is no
+ * matchup. */
+float g_est[10];
+float *st_estimate(const StView *v)
+{
+    int ai = active_own(v), fi = active_foe(v), i;
+    Cb a, f;
+    for (i = 0; i < 10; i++) g_est[i] = 0;
+    if (ai < 0 || fi < 0) return g_est;
+    cb_own(&a, &v->own[ai]);
+    cb_foe(&f, &v->foe[fi]);
+    g_est[0] = threat(&f, &a, v->weather, 0);
+    g_est[1] = best_move_dmg(&a, &f, v->weather, 0);
+    g_est[2] = speed(&a); g_est[3] = speed(&f); g_est[4] = p_first(&a, &f);
+    g_est[5] = f.stat[ST_ATK]; g_est[6] = f.stat[ST_DEF]; g_est[7] = f.stat[ST_SPA]; g_est[8] = f.stat[ST_SPD];
+    g_est[9] = a.maxhp;
+    return g_est;
 }
 
 StChoice st_choose(const StView *v)
@@ -1911,6 +2241,13 @@ StChoice st_choose(const StView *v)
         int fi = active_foe(v);
         int key = fi >= 0 ? v->foe[fi].key : -1;
         if (key != g_f.foe_active_key) { g_f.foe_active_key = key; g_f.lock_key = -1; }
+    }
+    {
+        int ai = active_own(v);
+        int key = ai >= 0 ? v->own[ai].key : -1;
+        if (v->request == 0 && key != g_f.own_active_key) {
+            g_f.own_active_key = key; g_f.own_in_turn = v->turn; g_f.used_mask = 0;
+        }
     }
     learn_switch(v);
     ch = choose_inner(v);

@@ -341,6 +341,7 @@ static int32_t on_turn(void *p)
     g_turn_first = -1;
     g_turn_move[0] = g_turn_move[1] = 0;
     g_v.turn = e->turn;
+    g_choice_turn = -1;             /* a new turn: decide again */
     return EIDOS_EVENT_CONTINUE;
 }
 
@@ -453,6 +454,11 @@ static int32_t on_ai(void *p)
             e->switch_to = (uint8_t)g_choice.index;
             put("turn "); num(g_v.turn); put(": switch to "); num(g_choice.index);
             put(" (score "); num(g_choice.score); put(")"); out();
+            /* used: the next ask decides again.  The game's turn number can
+             * repeat (turn 0 twice at the start), and a switch reorders the
+             * party, so a kept "switch to 2" pointed at the Pokemon that had
+             * just left and brought it straight back */
+            g_choice_turn = -1;
         } else {
             e->switch_to = 6;
         }
@@ -463,6 +469,7 @@ static int32_t on_ai(void *p)
             put(" (game picked "); num(e->move); put(", score "); num(g_choice.score); put(")"); out();
             e->move = (uint8_t)g_choice.index;
         }
+        g_choice_turn = -1;         /* used (see the switch above) */
     }
     return EIDOS_EVENT_CONTINUE;
 }
