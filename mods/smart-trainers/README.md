@@ -85,6 +85,24 @@ cause (its own and the player's), the common held items on both sides (the
 player's once revealed), screens, hazards, Substitute, Leech Seed, Yawn,
 Taunt and Tailwind, and it predicts the player's switches.
 
+Version 0.3.0 fixes what play tests against Alder showed:
+
+- A switch is decided once. Before, the game asked twice on the first turn
+  and a switch reorders the party, so the trainer switched in and straight
+  back out.
+- A knock out that comes after the player's move counts as one when the
+  player's Pokemon cannot knock the trainer's out first (an Earthquake on
+  a Chandelure low on HP was scored as a plain hit and lost to a switch).
+- A sure knock out is never traded for a guess that the player switches,
+  and the trainer does not switch out of one.
+- A move into an ability the player's Pokemon may have but has not shown
+  (Flash Fire, Levitate, Water Absorb, Volt Absorb, Lightning Rod, Storm
+  Drain, Motor Drive, Sap Sipper) counts as a knock out only by the odds.
+- Damage past the foe's HP no longer counts, and a move that needs a turn
+  to recharge loses a tie.
+
+Against the game's gym AI on its own teams it now wins 64.6% (62.7% before).
+
 Needs eidos 0.2.3 or later (the move stat-change data). On an older eidos it
 logs that and leaves every battle to the game's own AI.
 
