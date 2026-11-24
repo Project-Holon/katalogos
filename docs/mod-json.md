@@ -40,8 +40,8 @@ writes it by hand.
 | `path` | | an official mod's folder, `mods/<id>`; absent for another mod |
 | `official` | | true for a mod of this repository |
 | `multiplayer` | manifest `multiplayer` | the mod's multiplayer number, when it takes part in multiplayer |
-| `games` | manifest `game` | `black`, `white` or both; both when the manifest names no cartridge |
-| `game_code` | manifest `game` | the cartridge code (`IRBO`: Black, English), when there is one |
+| `games` | manifest `game` | `black`, `white` or both: `game = black` or `game = white` limits the mod to that game, and a mod without a `game` line works on both. An older manifest's cartridge code (`IRBO`) counts as its game, whatever the language |
+| `game_code` | manifest `game` | an older manifest's cartridge code (`IRBO`: Black, English), when it has one |
 | `tags` | manifest `tags` | lower case, from `tags = challenge, rules` |
 | `icon` | manifest `icon` | `{"item": 4}` (an item's bag icon), `{"species": 25}` (a Pokemon's sprite), both drawn from the player's own ROM, or `{"file": "icon.png"}`: the mod's own picture, published beside `mod.json` |
 | `api` | manifest `api` | the mod interface version the mod needs |
