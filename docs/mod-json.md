@@ -43,6 +43,7 @@ writes it by hand.
 | `games` | manifest `game` | `black`, `white` or both: `game = black` or `game = white` limits the mod to that game, and a mod without a `game` line works on both. An older manifest's cartridge code (`IRBO`) counts as its game, whatever the language |
 | `game_code` | manifest `game` | an older manifest's cartridge code (`IRBO`: Black, English), when it has one |
 | `tags` | manifest `tags` | lower case, from `tags = challenge, rules` |
+| `links` | manifest `link` lines | pages about the mod or its makers, in order: `link = Text \| https://...` becomes `{"text": "Text", "url": "https://..."}`; absent when the manifest has none. A line whose address is not https is left out |
 | `icon` | manifest `icon` | `{"item": 4}` (an item's bag icon), `{"species": 25}` (a Pokemon's sprite), both drawn from the player's own ROM, or `{"file": "icon.png"}`: the mod's own picture, published beside `mod.json` |
 | `api` | manifest `api` | the mod interface version the mod needs |
 | `has_code` | manifest `code` | the mod runs its own code in the game |
