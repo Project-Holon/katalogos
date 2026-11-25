@@ -1,0 +1,5 @@
+language 1
+# The same card for a new game, before its first save.
+rule liberty_pass_new on game.new
+    when setting.liberty_pass == 1
+    do gift "cards/liberty_pass.pgf"

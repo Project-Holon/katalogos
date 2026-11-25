@@ -1,0 +1,3 @@
+# Options of the converted hack. The hack's own guides did these by save editing.
+option liberty_pass bool "Liberty Pass card" on
+option national_dex bool "National Pokedex early" off

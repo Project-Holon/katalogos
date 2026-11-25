@@ -50,6 +50,20 @@ Where the launcher reads the files:
 | [Soul Link](mods/soul-link) | a Nuzlocke for two or more players in one multiplayer game, with linked pairs |
 | [Exp. Share](mods/exp-share) | the whole party gains experience in every battle; an option switches it off |
 | [Smart Trainers](mods/smart-trainers) | trainers battle like a thinking player: they learn your Pokemon in battle, switch and set up; needs eidos 0.2.3 |
+| [RetroAchievements](mods/retroachievements) | earn RetroAchievements while you play: sign in from its own Settings tab; needs eidos 0.2.7 |
+
+## Unofficial conversions
+
+Drayano's ROM hacks, converted into eidos mods from their original patches.
+They are not Drayano's own releases and he does not support them; his pages
+are linked in each mod's README. Each needs eidos 0.2.7 and its own game.
+
+| Mod | What it is |
+|---|---|
+| [Blaze Black (Full)](mods/blaze-black-full) | Blaze Black 3.1, Full: new trainer teams, wild Pokemon, items, trades, and changed Pokemon and moves; Pokemon Black |
+| [Blaze Black (Clean)](mods/blaze-black-clean) | Blaze Black 3.1, Clean: the Full changes without the changed Pokemon, moves and attacks; Pokemon Black |
+| [Volt White (Full)](mods/volt-white-full) | Volt White 3.1, Full; Pokemon White |
+| [Volt White (Clean)](mods/volt-white-clean) | Volt White 3.1, Clean; Pokemon White |
 
 A new version of an official mod: raise `version` in its `mod/eidos_mod.txt`
 and in `index.json`, in the same pull request. Once it is on `main`, the

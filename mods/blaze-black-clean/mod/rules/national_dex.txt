@@ -1,0 +1,7 @@
+language 1
+# The National Pokedex before the Elite Four (the hack's "National PokeDex
+# Equipment"). It runs when a save loads, as the guide advises after
+# Professor Juniper gives the Pokedex.
+rule national_dex on save.load
+    when setting.national_dex == 1 && national_dex == 0
+    do set national_dex 1
