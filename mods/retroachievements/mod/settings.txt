@@ -1,0 +1,14 @@
+# The RetroAchievements tab of Settings (mod interface 7).
+tab "RetroAchievements"
+heading "Sign in"
+option ra.user text "User name" 20 "" word ?ra.who=
+help ra.user "Your RetroAchievements user name."
+option ra.pass secret "Password" 64 ?ra.who=
+help ra.pass "Used once to sign in, never kept."
+button ra.signin "Sign in" ?ra.who=
+show ra.who "Signed in as"
+button ra.signout "Sign out" ?ra.who!=
+option ra.hardcore bool "Hardcore mode" on
+help ra.hardcore "Takes effect the next time the game starts. Not allowed while another mod that changes the game, or a debug switch, is on."
+show ra.why "Hardcore is off"
+show ra.queue "Unlocks"

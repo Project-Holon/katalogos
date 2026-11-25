@@ -1,0 +1,12 @@
+name        = RetroAchievements
+description = Earn RetroAchievements while you play: sign in from its Settings tab, unlocks show as pop-ups, hardcore mode when nothing else changes the game.
+author      = Project Holon, after the RetroAchievements work of Mythic Keeper (MythicForge)
+version     = 0.1.0
+tags        = achievements, online
+state       = retroachievements
+api         = 7
+memory      = 2
+code        = retroachievements.wasm
+settings    = settings.txt
+link        = RetroAchievements | https://retroachievements.org
+link        = Mythic Keeper's RetroAchievements for eidos (pull request 46) | https://github.com/Project-Holon/eidos/pull/46
