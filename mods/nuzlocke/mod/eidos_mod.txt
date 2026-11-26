@@ -1,5 +1,5 @@
 name        = Nuzlocke
-description = The Nuzlocke challenge: catch only the first wild Pokemon of each area, and a Pokemon that faints is gone for good.
+description = Catch only the first wild Pokemon in each area. Fainted Pokemon are gone for good.
 author      = Project Holon
 version     = 1.1.0
 tags        = challenge, nuzlocke

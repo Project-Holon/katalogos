@@ -1,5 +1,5 @@
 name        = Exp. Share
-description = The whole party gains experience in every battle, as with the Exp. Share of the later games. Pokemon that did not fight get half. Can be switched off in the settings.
+description = The whole party gains experience in every battle. Pokemon that don't battle get half. Can be disabled in Settings.
 author      = Project Holon
 version     = 1.0.0
 tags        = quality of life, experience
