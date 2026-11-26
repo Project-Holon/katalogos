@@ -1,7 +1,7 @@
 name        = Nuzlocke
 description = Catch only the first wild Pokemon in each area. Fainted Pokemon are gone for good.
 author      = Project Holon
-version     = 1.1.0
+version     = 1.1.1
 tags        = challenge, nuzlocke
 state       = nuzlocke
 settings    = settings.txt

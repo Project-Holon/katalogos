@@ -1,7 +1,7 @@
 name        = Exp. Share
 description = The whole party gains experience in every battle. Pokemon that don't battle get half. Can be disabled in Settings.
 author      = Project Holon
-version     = 1.0.0
+version     = 1.0.1
 tags        = quality of life, experience
 state       = exp_share
 api         = 5

@@ -1,7 +1,7 @@
 name        = Soul Link
 description = Multiplayer Nuzlocke for two or more players. Pokemon caught in the same area are linked: if one faints or is released, or if a player misses an area's first encounter, every player loses theirs.
 author      = Project Holon
-version     = 1.1.0
+version     = 1.1.1
 tags        = challenge, nuzlocke, multiplayer
 state       = soul_link
 api         = 5

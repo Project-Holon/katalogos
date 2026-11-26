@@ -1,7 +1,7 @@
 name        = Smart Trainers
 description = Trainers battle like human players: they track what your Pokemon reveal, predict your options, switch to counters, and set up when safe. They never see hidden information.
 author      = Project Holon
-version     = 0.3.0
+version     = 0.3.1
 tags        = difficulty, battle, ai
 state       = smart_trainers
 api         = 5

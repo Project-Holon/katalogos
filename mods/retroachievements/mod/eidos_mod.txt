@@ -1,7 +1,7 @@
 name        = RetroAchievements
 description = Earn RetroAchievements with pop-up unlock notifications. Sign in on the Settings tab. Hardcore mode requires an unmodified game.
 author      = Project Holon, after the RetroAchievements work of Mythic Keeper (MythicForge)
-version     = 0.1.1
+version     = 0.1.2
 icon        = item 590
 tags        = achievements, online
 state       = retroachievements
