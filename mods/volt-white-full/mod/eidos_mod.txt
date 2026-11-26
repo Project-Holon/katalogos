@@ -1,7 +1,7 @@
 # Written by kenon.
 name = Volt White (Full, unofficial)
 order = 0
-description = An unofficial conversion of Drayano's Volt White 3.1, Full: every trainer has a new team on a harder level curve, wild Pokemon and items are changed, trade evolutions need no trade, all five in-game trades are new, and some Pokemon, their level-up moves and a few attacks are changed. Converted from the original patch. Its options give the Liberty Pass card (on), so the ship to Liberty Garden and Victini can be reached, and the National Pokedex early (off); the hack's guides did both by save editing. Blaze Black and Volt White are by Drayano; this conversion is not his and he does not support it: https://projectpokemon.org/home/forums/topic/13244-pok%C3%A9mon-blaze-black-pok%C3%A9mon-volt-white/ and https://x.com/Drayano60
+description = An unofficial conversion of Drayano's Volt White 3.1, this conversion is not his and he does not support it.
 author = Drayano (unofficial conversion with kenon)
 version = 3.1.0
 game = white
