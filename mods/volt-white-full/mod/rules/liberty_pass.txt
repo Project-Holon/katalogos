@@ -1,7 +1,0 @@
-language 1
-# The Liberty Pass card (the hack's "Liberty Ticket Equipment"): the delivery
-# man in a Pokemon Centre hands over the pass, and the ship to Liberty Garden
-# sails. A save gets the card once.
-rule liberty_pass on save.load
-    when setting.liberty_pass == 1
-    do gift "cards/liberty_pass.pgf"

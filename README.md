@@ -35,7 +35,7 @@ Every mod's release carries two files:
 | `mod` | an official mod: its folder `mods/<id>`. Its `version` is required |
 | `repo` | another mod's GitHub repository, `owner/name` |
 | `version` | for `mod`, the released version; for `repo`, an optional fixed release (`x.y.z`) instead of the newest one |
-| `unofficial` | for `mod`: `true` for a mod kept here that is someone else's work, converted without its author (the Drayano conversions below). The launcher marks it Unofficial and lists it after the official mods |
+| `unofficial` | for `mod`: `true` for a mod kept here that is not official. A launcher that knows the mark lists it after the official mods, without the Official badge |
 
 Where the launcher reads the files:
 
@@ -58,15 +58,15 @@ Where the launcher reads the files:
 Drayano's ROM hacks, converted into eidos mods from their original patches.
 They are not Drayano's own releases and he does not support them; his pages
 are linked in each mod's README. Each needs eidos 0.2.7 and its own game.
-Their index entries carry `"unofficial": true`. Their version is Drayano's
+They are listed from their own repositories. Their version is Drayano's
 (3.1), and the last number counts the conversion's own releases.
 
 | Mod | What it is |
 |---|---|
-| [Blaze Black (Full)](mods/blaze-black-full) | Blaze Black 3.1, Full: new trainer teams, wild Pokemon, items, trades, and changed Pokemon and moves; Pokemon Black |
-| [Blaze Black (Clean)](mods/blaze-black-clean) | Blaze Black 3.1, Clean: the Full changes without the changed Pokemon, moves and attacks; Pokemon Black |
-| [Volt White (Full)](mods/volt-white-full) | Volt White 3.1, Full; Pokemon White |
-| [Volt White (Clean)](mods/volt-white-clean) | Volt White 3.1, Clean; Pokemon White |
+| [Blaze Black (Full)](https://github.com/OukilIl/blaze-black-full) | Blaze Black 3.1, Full: new trainer teams, wild Pokemon, items, trades, and changed Pokemon and moves; Pokemon Black |
+| [Blaze Black (Clean)](https://github.com/OukilIl/blaze-black-clean) | Blaze Black 3.1, Clean: the Full changes without the changed Pokemon, moves and attacks; Pokemon Black |
+| [Volt White (Full)](https://github.com/OukilIl/volt-white-full) | Volt White 3.1, Full; Pokemon White |
+| [Volt White (Clean)](https://github.com/OukilIl/volt-white-clean) | Volt White 3.1, Clean; Pokemon White |
 
 A new version of an official mod: raise `version` in its `mod/eidos_mod.txt`
 and in `index.json`, in the same pull request. Once it is on `main`, the

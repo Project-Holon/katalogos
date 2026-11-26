@@ -6,10 +6,10 @@
     { "mod": "exp-share", "version": "1.0.0" },
     { "mod": "smart-trainers", "version": "0.3.0" },
     { "mod": "retroachievements", "version": "0.1.1" },
-    { "mod": "blaze-black-full", "version": "3.1.1", "unofficial": true },
-    { "mod": "blaze-black-clean", "version": "3.1.1", "unofficial": true },
-    { "mod": "volt-white-full", "version": "3.1.1", "unofficial": true },
-    { "mod": "volt-white-clean", "version": "3.1.1", "unofficial": true },
-    { "repo": "Project-Holon/arkhipelagos" }
+    { "repo": "Project-Holon/arkhipelagos" },
+    { "repo": "OukilIl/blaze-black-full" },
+    { "repo": "OukilIl/blaze-black-clean" },
+    { "repo": "OukilIl/volt-white-full" },
+    { "repo": "OukilIl/volt-white-clean" }
   ]
 }
