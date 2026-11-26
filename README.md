@@ -7,7 +7,8 @@ mods and install them.
 `index.json` lists two kinds of mods:
 
 - **Official mods** live in this repository, in `mods/<id>`. Being here is
-  what makes a mod official.
+  what makes a mod official. A Project Holon mod with its own repository is
+  official too when its line is marked `"official": true`.
 - **Other mods** live in their authors' own repositories. The index only
   links them; each one's releases carry its files.
 
@@ -36,6 +37,7 @@ Every mod's release carries two files:
 | `repo` | another mod's GitHub repository, `owner/name` |
 | `version` | for `mod`, the released version; for `repo`, an optional fixed release (`x.y.z`) instead of the newest one |
 | `unofficial` | for `mod`: `true` for a mod kept here that is not official. A launcher that knows the mark lists it after the official mods, without the Official badge |
+| `official` | for `repo`: `true` for a Project Holon mod kept in its own repository. A launcher that knows the mark shows it with the Official badge, among the official mods |
 
 Where the launcher reads the files:
 
@@ -52,6 +54,7 @@ Where the launcher reads the files:
 | [Exp. Share](mods/exp-share) | the whole party gains experience in every battle; an option switches it off |
 | [Smart Trainers](mods/smart-trainers) | trainers battle like a thinking player: they learn your Pokemon in battle, switch and set up; needs eidos 0.2.3 |
 | [RetroAchievements](mods/retroachievements) | earn RetroAchievements while you play: sign in from its own Settings tab; needs eidos 0.2.7 |
+| [arkhipelagos](https://github.com/Project-Holon/arkhipelagos) | a randomizer: play a shuffled game alone, share one world with other eidos players, or join an Archipelago room |
 
 ## Unofficial conversions
 
