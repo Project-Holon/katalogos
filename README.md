@@ -35,6 +35,7 @@ Every mod's release carries two files:
 | `mod` | an official mod: its folder `mods/<id>`. Its `version` is required |
 | `repo` | another mod's GitHub repository, `owner/name` |
 | `version` | for `mod`, the released version; for `repo`, an optional fixed release (`x.y.z`) instead of the newest one |
+| `unofficial` | for `mod`: `true` for a mod kept here that is someone else's work, converted without its author (the Drayano conversions below). The launcher marks it Unofficial and lists it after the official mods |
 
 Where the launcher reads the files:
 
@@ -57,6 +58,8 @@ Where the launcher reads the files:
 Drayano's ROM hacks, converted into eidos mods from their original patches.
 They are not Drayano's own releases and he does not support them; his pages
 are linked in each mod's README. Each needs eidos 0.2.7 and its own game.
+Their index entries carry `"unofficial": true`. Their version is Drayano's
+(3.1), and the last number counts the conversion's own releases.
 
 | Mod | What it is |
 |---|---|
@@ -97,7 +100,7 @@ The workflows use the `katalogos` packer and checker from
 built from a fixed tag. To try a mod locally:
 
 ```
-cargo install --git https://github.com/Project-Holon/morphe --tag v0.7.0 katalogos --locked
+cargo install --git https://github.com/Project-Holon/morphe --tag v0.13.3 katalogos --locked
 katalogos pack path/to/mod --repo you/your-mod --version 1.0.0 --out dist
 katalogos inspect dist/mod.json dist/mod.bw
 ```
